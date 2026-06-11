@@ -1,0 +1,37 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27037:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/brand_intel_dev
+      MONGO_DB: brand_intel_dev
+    ports:
+      - "8090:8080"
+    depends_on:
+      - mongo
+
+  # data-backend — lớp HTTP đặt cạnh Mongo (chạy trên VM). Cloudflare tunnel trỏ vào
+  # service này để runtime PUBLIC trên AgentBase đọc/ghi Mongo qua HTTP.
+  data-backend:
+    build: .
+    command: ["uvicorn", "data_backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/brand_intel_dev
+      MONGO_DB: brand_intel_dev
+    ports:
+      - "8091:8080"
+    depends_on:
+      - mongo
+
+volumes:
+  mongo-data:

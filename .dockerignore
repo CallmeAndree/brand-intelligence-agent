@@ -1,0 +1,10 @@
+.env
+.env.*
+.greennode.json
+.agentbase/
+.git/
+.gitignore
+**/__pycache__/
+*.pyc
+test.ipynb
+docker-compose.yml
