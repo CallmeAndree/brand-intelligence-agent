@@ -1,2 +1,44 @@
+# ===== Secrets / Credentials =====
 .env
+.env.*
+!.env.example
+.greennode.json
+.agentbase/
+*.pem
+*.key
+*_secret*
+*credentials*
+*.p12
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ===== Test / scratch =====
 test.*
+
+# ===== Data dumps (PII / dataset gốc) =====
+*.json.bak
+backup.json
+
+# ===== OS / IDE =====
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
