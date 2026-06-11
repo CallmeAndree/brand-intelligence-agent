@@ -1,5 +1,6 @@
 import json
 import re
+import typing
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -106,6 +107,8 @@ class EnrichOneUseCase:
                 examples[field_name] = False
             elif annotation is int:
                 examples[field_name] = 3
+            elif typing.get_origin(annotation) in (list, set, tuple):
+                examples[field_name] = ["từ khóa 1", "từ khóa 2", "từ khóa 3"]
             else:
                 examples[field_name] = "giá trị phân tích"
         return json.dumps(examples, ensure_ascii=False)
@@ -141,6 +144,8 @@ class EnrichOneUseCase:
 
     @staticmethod
     def _fallback_topic(mention: Mention) -> TopicFields:
+        # bi_keywords cố tình để rỗng ở fallback: từ khóa là kết quả LLM trích,
+        # không bịa theo luật cứng. LLM hỏng hoàn toàn → không có keyword.
         text = mention.mention.lower()
         if any(keyword in text for keyword in ("ví trả sau", "vi tra sau", "vitrả sau")):
             return TopicFields(bi_topic="thắc mắc phí hủy ví trả sau", bi_product_area="ví trả sau")
@@ -170,32 +175,33 @@ class EnrichOneUseCase:
     @staticmethod
     def _topic_prompt(mention: Mention) -> str:
         return f"""
-Bóc tách hai trường phân loại cho mention tiêu cực về ZaloPay dưới đây.
-- bi_topic: chủ đề/vấn đề cốt lõi mà dư luận đang nói, từ vựng mở, một cụm ngắn gọn tiếng Việt (ví dụ "nghi ngờ lừa đảo", "trừ tiền sai", "app lỗi không vào được", "khuyến mãi gây hiểu lầm").
-- bi_product_area: MẢNG SẢN PHẨM/TÍNH NĂNG CỤ THỂ bên trong ZaloPay bị nhắc tới. TUYỆT ĐỐI KHÔNG ghi "ZaloPay" chung chung (vô nghĩa vì mọi mention đều về ZaloPay). Hãy chọn mảng cụ thể, ví dụ: thanh toán/chuyển tiền, nạp–rút tiền, liên kết ngân hàng, mã QR, ví trả sau, khuyến mãi/voucher, định danh (KYC)/đăng nhập, chăm sóc khách hàng, bảo mật/lừa đảo, hiệu năng ứng dụng. Nếu không xác định được mảng cụ thể thì mới ghi "tổng quát".
+        Bóc tách ba trường phân loại cho mention tiêu cực về ZaloPay dưới đây.
+        - bi_topic: chủ đề/vấn đề cốt lõi mà dư luận đang nói, từ vựng mở, một cụm ngắn gọn tiếng Việt (ví dụ "nghi ngờ lừa đảo", "trừ tiền sai", "app lỗi không vào được", "khuyến mãi gây hiểu lầm").
+        - bi_product_area: MẢNG SẢN PHẨM/TÍNH NĂNG CỤ THỂ bên trong ZaloPay bị nhắc tới. TUYỆT ĐỐI KHÔNG ghi "ZaloPay" chung chung (vô nghĩa vì mọi mention đều về ZaloPay). Hãy chọn mảng cụ thể, ví dụ: thanh toán/chuyển tiền, nạp–rút tiền, liên kết ngân hàng, mã QR, ví trả sau, khuyến mãi/voucher, định danh (KYC)/đăng nhập, chăm sóc khách hàng, bảo mật/lừa đảo, hiệu năng ứng dụng. Nếu không xác định được mảng cụ thể thì mới ghi "tổng quát".
+        - bi_keywords: 3–7 từ khóa/cụm từ tiếng Việt NGẮN GỌN rút trực tiếp từ nội dung mention, phục vụ gom nhóm xu hướng & tìm kiếm (ví dụ ["trừ tiền sai", "không hoàn tiền", "tổng đài không phản hồi"]). Viết thường, mỗi từ khóa là một cụm súc tích không trùng lặp, KHÔNG đưa từ "ZaloPay" vào.
 
-Mention: {mention.mention}
-Author: {mention.author or ''}
-Subject: {mention.subject or ''}
-Kompa analysis: {mention.kompa_analysis or ''}
-""".strip()
+        Mention: {mention.mention}
+        Author: {mention.author or ''}
+        Subject: {mention.subject or ''}
+        Kompa analysis: {mention.kompa_analysis or ''}
+        """.strip()
 
     @staticmethod
     def _judgment_prompt(mention: Mention, topic: TopicFields) -> str:
         return f"""
-Đã xác định chủ đề bi_topic={topic.bi_topic!r}. Hãy đánh giá mention này dưới góc nhìn một người làm truyền thông thương hiệu ZaloPay.
-- bi_severity (mức rủi ro truyền thông, 1–10): 1–2 = than phiền lẻ tẻ, vô hại; 3–4 = bất mãn nhẹ; 5–6 = khiếu nại rõ ràng cần ghi nhận; 7–8 = sự cố dịch vụ ảnh hưởng nhiều người hoặc dễ lan; 9–10 = khủng hoảng khẩn (lừa đảo/mất tiền diện rộng, vấn đề pháp lý/bảo mật, nội dung đang viral bôi nhọ thương hiệu).
-- bi_intent: ý định thật sự của người nói, mô tả ngắn bằng tiếng Việt (ví dụ "khiếu nại đòi hoàn tiền", "cảnh báo người khác", "mỉa mai châm biếm", "hỏi thông tin", "spam/lạc đề").
-- bi_is_actionable: true nếu đây là vấn đề CẦN can thiệp/xử lý SỚM (có nguy cơ leo thang thành khủng hoảng truyền thông nếu để lâu); false nếu chỉ là than phiền lẻ tẻ, cảm thán, rác, hoặc không cần phản ứng gấp.
+        Đã xác định chủ đề bi_topic={topic.bi_topic!r}. Hãy đánh giá mention này dưới góc nhìn một người làm truyền thông thương hiệu ZaloPay.
+        - bi_severity (mức rủi ro truyền thông, 1–10): 1–2 = than phiền lẻ tẻ, vô hại; 3–4 = bất mãn nhẹ; 5–6 = khiếu nại rõ ràng cần ghi nhận; 7–8 = sự cố dịch vụ ảnh hưởng nhiều người hoặc dễ lan; 9–10 = khủng hoảng khẩn (lừa đảo/mất tiền diện rộng, vấn đề pháp lý/bảo mật, nội dung đang viral bôi nhọ thương hiệu).
+        - bi_intent: ý định thật sự của người nói, mô tả ngắn bằng tiếng Việt (ví dụ "khiếu nại đòi hoàn tiền", "cảnh báo người khác", "mỉa mai châm biếm", "hỏi thông tin", "spam/lạc đề").
+        - bi_is_actionable: true nếu đây là vấn đề CẦN can thiệp/xử lý SỚM (có nguy cơ leo thang thành khủng hoảng truyền thông nếu để lâu); false nếu chỉ là than phiền lẻ tẻ, cảm thán, rác, hoặc không cần phản ứng gấp.
 
-Mention: {mention.mention}
-Mảng sản phẩm: {topic.bi_product_area}
-""".strip()
+        Mention: {mention.mention}
+        Mảng sản phẩm: {topic.bi_product_area}
+        """.strip()
 
     @staticmethod
     def _summary_prompt(mention: Mention, topic: TopicFields) -> str:
         return f"""
-Viết MỘT câu tiếng Việt súc tích cho bản tin theo dõi truyền thông thương hiệu ZaloPay, đúng giọng một nhà phân tích truyền thông: nêu rõ dư luận đang phản ánh điều gì và vì sao nó đáng chú ý với thương hiệu. Không lặp lại nguyên văn mention, không mở đầu bằng "Người dùng nói rằng".
-Chủ đề: {topic.bi_topic}
-Mention: {mention.mention}
-""".strip()
+        Viết MỘT câu tiếng Việt súc tích cho bản tin theo dõi truyền thông thương hiệu ZaloPay, đúng giọng một nhà phân tích truyền thông: nêu rõ dư luận đang phản ánh điều gì và vì sao nó đáng chú ý với thương hiệu. Không lặp lại nguyên văn mention, không mở đầu bằng "Người dùng nói rằng".
+        Chủ đề: {topic.bi_topic}
+        Mention: {mention.mention}
+        """.strip()

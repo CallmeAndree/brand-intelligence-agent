@@ -55,6 +55,7 @@ class MentionDataRepository(MentionRepo):
                 "$unset": {
                     "bi_topic": "",
                     "bi_product_area": "",
+                    "bi_keywords": "",
                     "bi_severity": "",
                     "bi_intent": "",
                     "bi_is_actionable": "",

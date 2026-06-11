@@ -9,6 +9,14 @@ class TopicFields(BaseModel):
             "Mảng sản phẩm/tính năng CỤ THỂ bên trong ZaloPay bị nhắc tới. KHÔNG ghi 'ZaloPay' chung chung."
         ),
     )
+    bi_keywords: list[str] = Field(
+        default_factory=list,
+        description=(
+            "3–7 từ khóa/cụm từ tiếng Việt ngắn gọn rút ra từ mention, dùng để gom nhóm xu hướng & tìm kiếm "
+            "(ví dụ: 'trừ tiền sai', 'không hoàn tiền', 'app văng'). Mỗi từ khóa viết thường, không trùng lặp, "
+            "KHÔNG chứa từ 'ZaloPay'."
+        ),
+    )
 
 
 class JudgmentFields(BaseModel):
