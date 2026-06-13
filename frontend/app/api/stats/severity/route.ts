@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { mentionsCollection } from "@/lib/mongo";
-import { parseFilters, buildMatch, SEVERITY_BAND_EXPR } from "@/lib/aggregations";
+import {
+  parseFilters,
+  buildMatch,
+  SEVERITY_BAND_EXPR,
+} from "@/lib/aggregations";
 import { handle } from "@/lib/response";
 import { SEVERITY_BANDS } from "@/lib/severity";
 import type { CountItem } from "@/lib/types";
@@ -8,6 +12,7 @@ import type { CountItem } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Deprecated: the dashboard now uses `/api/stats/keywords` instead of severity distribution.
 export async function GET(req: NextRequest) {
   return handle<CountItem[]>(async () => {
     const f = parseFilters(req.nextUrl.searchParams);
@@ -24,6 +29,9 @@ export async function GET(req: NextRequest) {
 
     const counts = new Map(rows.map((r) => [String(r._id), r.count as number]));
     // Trả đủ 4 band theo thứ tự, fill 0.
-    return SEVERITY_BANDS.map((b) => ({ key: b.band, count: counts.get(b.band) ?? 0 }));
+    return SEVERITY_BANDS.map((b) => ({
+      key: b.band,
+      count: counts.get(b.band) ?? 0,
+    }));
   });
 }

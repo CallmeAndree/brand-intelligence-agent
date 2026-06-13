@@ -2,14 +2,13 @@
 
 Dùng khi agent chạy ở runtime PUBLIC (AgentBase) không chạm Mongo trực tiếp được.
 Mọi thao tác đọc/ghi được gửi tới `data-backend` (FastAPI trên VM, cạnh Mongo),
-qua Cloudflare tunnel. Logic nghiệp vụ (set_enrichment/mark_failed $set/$unset)
-vẫn nằm DUY NHẤT ở MentionDataRepository phía backend — repo này chỉ chuyển vận.
+qua Cloudflare tunnel. Logic nghiệp vụ (save_partial/mark_enriched/mark_failed
+$set) vẫn nằm DUY NHẤT ở MentionDataRepository phía backend — repo này chỉ chuyển vận.
 """
 
 import httpx
 
 from app.core.logging_mixin import LoggerMixin
-from app.modules.enrichment.domain.models import BiFields
 from app.modules.ingestion.domain.models import Mention
 from app.modules.ingestion.domain.repository import MentionRepo
 
@@ -51,11 +50,15 @@ class HttpMentionRepository(MentionRepo, LoggerMixin):
         resp.raise_for_status()
         return resp.json()["ids"]
 
-    async def set_enrichment(self, mention_id: str, fields: BiFields) -> None:
+    async def save_partial(self, mention_id: str, values: dict) -> None:
         resp = await self._client.post(
-            f"/repo/set-enrichment/{mention_id}",
-            json=fields.model_dump(mode="json"),
+            f"/repo/save-partial/{mention_id}",
+            json=values,
         )
+        resp.raise_for_status()
+
+    async def mark_enriched(self, mention_id: str) -> None:
+        resp = await self._client.post(f"/repo/mark-enriched/{mention_id}")
         resp.raise_for_status()
 
     async def mark_failed(self, mention_id: str, reason: str) -> None:

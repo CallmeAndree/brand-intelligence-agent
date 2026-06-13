@@ -7,11 +7,22 @@ const LABELS: Record<FilterDim, string> = {
   severityBand: "Mức độ",
   productArea: "Sản phẩm",
   topic: "Chủ đề",
+  clusterId: "Cụm chủ đề",
+  keywordGroupId: "Cụm keyword",
   intent: "Ý định",
   actionableOnly: "Cần xử lý",
 };
 
-const DIMS: FilterDim[] = ["platform", "severityBand", "productArea", "topic", "intent", "actionableOnly"];
+const DIMS: FilterDim[] = [
+  "platform",
+  "severityBand",
+  "productArea",
+  "topic",
+  "clusterId",
+  "keywordGroupId",
+  "intent",
+  "actionableOnly",
+];
 
 export default function FilterChips() {
   const { filters, clearDim, clearAll } = useFilters();
@@ -24,7 +35,8 @@ export default function FilterChips() {
     <div className="flex flex-wrap items-center gap-2">
       {active.map((dim) => {
         const val = fmap[dim];
-        const text = dim === "actionableOnly" ? LABELS[dim] : `${LABELS[dim]}: ${val}`;
+        const text =
+          dim === "actionableOnly" ? LABELS[dim] : `${LABELS[dim]}: ${val}`;
         return (
           <span
             key={dim}
@@ -41,7 +53,10 @@ export default function FilterChips() {
           </span>
         );
       })}
-      <button onClick={clearAll} className="text-sm text-ink/60 underline hover:text-ink">
+      <button
+        onClick={clearAll}
+        className="text-sm text-ink/60 underline hover:text-ink"
+      >
         Xóa tất cả
       </button>
     </div>

@@ -4,7 +4,13 @@ import dynamic from "next/dynamic";
 
 // Wrapper ECharts layout-independent — nhận `option` THUẦN.
 // Dùng chung cho dashboard + (sau này) render chart inline trong chat (Phương án 3).
-const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
+const ReactECharts = dynamic(
+  async () => {
+    await import("echarts-wordcloud");
+    return import("echarts-for-react");
+  },
+  { ssr: false },
+);
 
 export interface EChartProps {
   option: Record<string, unknown>;
@@ -13,7 +19,11 @@ export interface EChartProps {
   onEvents?: Record<string, (params: any) => void>;
 }
 
-export default function EChart({ option, height = 300, onEvents }: EChartProps) {
+export default function EChart({
+  option,
+  height = 300,
+  onEvents,
+}: EChartProps) {
   return (
     <ReactECharts
       option={option}

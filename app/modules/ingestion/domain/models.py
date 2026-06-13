@@ -29,10 +29,16 @@ class Mention(BaseMongoModel):
     bi_enriched_at: datetime | None = None
     bi_topic: str | None = None
     bi_product_area: str | None = None
+    bi_keywords: list[str] | None = None
     bi_severity: int | None = None
     bi_intent: str | None = None
     bi_is_actionable: bool | None = None
     bi_summary_vi: str | None = None
+    embedding: list[float] | None = None
+    summary_embedding: list[float] | None = None
+    cluster_id: int | None = None
+    cluster_label: str | None = None
+    keyword_group_ids: list[int] | None = None
 
     def to_mongo(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True, exclude_none=True)

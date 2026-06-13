@@ -1,7 +1,13 @@
-import { MongoClient, Collection, Document } from "mongodb";
+import { MongoClient } from "mongodb";
+import { remoteCollection, remoteModeEnabled, type RemoteColl } from "./remoteCollection";
 
 // Mongo client singleton — tái dùng connection giữa các lần hot-reload trong dev.
 // Chỉ dùng server-side (API routes, Node runtime). KHÔNG import vào client component.
+//
+// Hai chế độ (giống Runtime 1 chọn theo REPO_MODE):
+//  - local/VM: nối Mongo trực tiếp qua MONGODB_URI (driver mongodb).
+//  - Vercel (DATA_BACKEND_URL set): KHÔNG nối Mongo (Mongo private trên VM) — đọc
+//    qua data-backend HTTP facade qua Cloudflare quick tunnel (xem remoteCollection.ts).
 
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGO_DB || "brand_intel";
@@ -30,7 +36,15 @@ export async function getDb() {
   return client.db(dbName);
 }
 
-export async function mentionsCollection(): Promise<Collection<Document>> {
+export async function collectionByName(name: string): Promise<RemoteColl> {
+  if (remoteModeEnabled()) {
+    return remoteCollection(name);
+  }
   const db = await getDb();
-  return db.collection("mentions");
+  // Driver Collection thỏa cấu trúc RemoteColl cho subset method các route dùng.
+  return db.collection(name) as unknown as RemoteColl;
+}
+
+export async function mentionsCollection(): Promise<RemoteColl> {
+  return collectionByName("mentions");
 }

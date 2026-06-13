@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
-import type { Document } from "mongodb";
 import { mentionsCollection } from "@/lib/mongo";
-import { parseFilters, buildMatch, SEVERITY_BAND_EXPR } from "@/lib/aggregations";
+import { parseFilters, buildMatch } from "@/lib/aggregations";
 import { handle } from "@/lib/response";
-import type { TimelinePoint, TimelineBucket, TimelineGroupBy } from "@/lib/types";
+import type { TimelinePoint, TimelineBucket } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,54 +13,35 @@ const BUCKET_FORMAT: Record<TimelineBucket, string> = {
   month: "%Y-%m",
 };
 
-function seriesExpr(groupBy: TimelineGroupBy): Document {
-  if (groupBy === "platform") return { $ifNull: ["$platform", "unknown"] };
-  if (groupBy === "topic") return { $ifNull: ["$bi_topic", "unknown"] };
-  return SEVERITY_BAND_EXPR; // severityBand (default)
-}
-
 export async function GET(req: NextRequest) {
-  return handle<{ points: TimelinePoint[]; series: string[] }>(async () => {
+  return handle<{ points: TimelinePoint[] }>(async () => {
     const sp = req.nextUrl.searchParams;
     const f = parseFilters(sp);
     const bucket = (sp.get("bucket") as TimelineBucket) || "month";
-    const groupBy = (sp.get("groupBy") as TimelineGroupBy) || "severityBand";
     const fmt = BUCKET_FORMAT[bucket] ?? BUCKET_FORMAT.month;
 
     const coll = await mentionsCollection();
+    const match = buildMatch(f);
+    if (!match.bi_severity) match.bi_severity = { $ne: null, $exists: true };
+
     const rows = await coll
       .aggregate([
-        { $match: buildMatch(f) },
+        { $match: match },
         {
           $group: {
-            _id: {
-              t: { $dateToString: { format: fmt, date: "$received_at" } },
-              s: seriesExpr(groupBy),
-            },
-            count: { $sum: 1 },
+            _id: { $dateToString: { format: fmt, date: "$received_at" } },
+            avg: { $avg: "$bi_severity" },
           },
         },
-        { $sort: { "_id.t": 1 } },
+        { $sort: { _id: 1 } },
       ])
       .toArray();
 
-    // Pivot ở Node: [{ date, <series>: count, ... }]
-    const seriesSet = new Set<string>();
-    const byDate = new Map<string, TimelinePoint>();
-    for (const r of rows) {
-      const date = r._id.t as string;
-      const s = String(r._id.s ?? "unknown");
-      seriesSet.add(s);
-      if (!byDate.has(date)) byDate.set(date, { date });
-      (byDate.get(date) as TimelinePoint)[s] = r.count;
-    }
-    const series = Array.from(seriesSet);
-    const points = Array.from(byDate.values()).map((p) => {
-      for (const s of series) if (p[s] == null) p[s] = 0;
-      return p;
-    });
-    points.sort((a, b) => a.date.localeCompare(b.date));
+    const points = rows.map((r) => ({
+      date: String(r._id),
+      avg: Math.round((Number(r.avg) || 0) * 10) / 10,
+    }));
 
-    return { points, series };
+    return { points };
   });
 }

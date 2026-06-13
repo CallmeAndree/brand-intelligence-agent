@@ -7,7 +7,15 @@ from typing import Any, TypeVar
 from agent_framework import ChatOptions, Message
 from pydantic import BaseModel, ValidationError
 
-from app.modules.enrichment.domain.models import BiFields, JudgmentFields, SummaryField, TopicFields
+from app.core.errors import is_rate_limit_error
+from app.modules.enrichment.domain.models import (
+    BI_INTENT_VALUES,
+    BI_PRODUCT_AREA_VALUES,
+    BiFields,
+    JudgmentFields,
+    SummaryField,
+    TopicFields,
+)
 from app.modules.ingestion.domain.models import Mention
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -21,40 +29,49 @@ class EnrichOneUseCase:
     # bao giờ ghi lại "ZaloPay" như một nhãn vô nghĩa — luôn nói về sắc thái
     # truyền thông và phân vùng sản phẩm cụ thể.
     _BRAND_PERSONA = (
-        "Bạn là chuyên gia phân tích thương hiệu & truyền thông của ZaloPay — ví điện tử "
-        "thuộc VNG. Mọi mention đưa vào đều là phản hồi tiêu cực về ZaloPay trên mạng xã hội."
+        "Bạn là chuyên gia phân tích thương hiệu & truyền thông của ZaloPay (ZLP) — ví điện tử "
+        "thuộc tập đoàn VNG. CHỈ về ZaloPay, KHÔNG bao gồm Zalo (app chat là sản phẩm khác của VNG). "
+        "Mọi mention đưa vào đều là phản hồi tiêu cực về ZaloPay trên mạng xã hội."
         "Bạn đọc dư luận như một người làm truyền thông thương hiệu: nhận diện đúng mảng "
         "sản phẩm bị nhắc, sắc thái cảm xúc, và mức rủi ro đối với uy tín thương hiệu."
     )
 
     async def execute(self, mention: Mention) -> BiFields:
-        topic = await self._call(
+        # Chain đầy đủ 3 pass — dùng cho backfill/replay/test. Worker on-ingest gọi
+        # từng pass riêng (topic/judgment/summary) để persist tăng dần + resume.
+        topic = await self.topic(mention)
+        judgment = await self.judgment(mention, topic)
+        summary = await self.summary(mention, topic)
+        return BiFields(**topic.model_dump(), **judgment.model_dump(), **summary.model_dump())
+
+    async def topic(self, mention: Mention) -> TopicFields:
+        return await self._call(
             [
                 Message("system", [self._BRAND_PERSONA + " Nhiệm vụ pass này: phân loại chủ đề và xác định mảng sản phẩm/ nội dung cụ thể được nhắc đến tr. Chỉ trả về đúng object JSON được yêu cầu, không trả schema."]),
                 Message("user", [self._topic_prompt(mention)]),
             ],
             TopicFields,
-            lambda: self._fallback_topic(mention),
         )
-        judgment = await self._call(
+
+    async def judgment(self, mention: Mention, topic: TopicFields) -> JudgmentFields:
+        return await self._call(
             [
                 Message("system", [self._BRAND_PERSONA + " Nhiệm vụ pass này: đánh giá mức độ nghiêm trọng dưới góc nhìn rủi ro truyền thông thương hiệu, đọc ý định người nói và khả năng đội ngũ xử lý. Chỉ trả về đúng object JSON được yêu cầu, không trả schema."]),
                 Message("user", [self._judgment_prompt(mention, topic)]),
             ],
             JudgmentFields,
-            lambda: self._fallback_judgment(mention),
         )
-        summary = await self._call(
+
+    async def summary(self, mention: Mention, topic: TopicFields) -> SummaryField:
+        return await self._call(
             [
                 Message("system", [self._BRAND_PERSONA + " Nhiệm vụ pass này: viết một câu tóm tắt tiếng Việt sắc bén, đúng giọng một bản tin theo dõi truyền thông thương hiệu. Chỉ trả về đúng object JSON được yêu cầu, không trả schema."]),
                 Message("user", [self._summary_prompt(mention, topic)]),
             ],
             SummaryField,
-            lambda: self._fallback_summary(mention, topic),
         )
-        return BiFields(**topic.model_dump(), **judgment.model_dump(), **summary.model_dump())
 
-    async def _call(self, messages: list[Message], schema: type[SchemaT], fallback_factory: Any | None = None) -> SchemaT:
+    async def _call(self, messages: list[Message], schema: type[SchemaT]) -> SchemaT:
         schema_prompt = self._schema_prompt(schema)
         try:
             response = await self.llm.get_response(messages, options=ChatOptions(response_format=schema))
@@ -63,14 +80,19 @@ class EnrichOneUseCase:
                 return value
             if value is not None:
                 return self._validate_value(value, schema)
-        except Exception:
-            pass
+        except Exception as exc:
+            # 429 là rate-limit (transient), KHÔNG phải lỗi schema → raise ngay để
+            # worker giữ pending + thử lại sau, tránh đốt thêm call fallback dồn dập.
+            if is_rate_limit_error(exc):
+                raise
 
         fallback_messages = messages + [Message("user", [schema_prompt])]
         try:
             response = await self.llm.get_response(fallback_messages)
             return self._validate_value(self._extract_json(self._response_text(response)), schema)
-        except Exception:
+        except Exception as exc:
+            if is_rate_limit_error(exc):
+                raise
             repair_messages = fallback_messages + [
                 Message(
                     "user",
@@ -84,8 +106,6 @@ class EnrichOneUseCase:
             try:
                 return self._validate_value(self._extract_json(self._response_text(response)), schema)
             except (ValueError, ValidationError):
-                if fallback_factory is not None:
-                    return fallback_factory()
                 raise
 
     @staticmethod
@@ -109,6 +129,10 @@ class EnrichOneUseCase:
                 examples[field_name] = 3
             elif typing.get_origin(annotation) in (list, set, tuple):
                 examples[field_name] = ["từ khóa 1", "từ khóa 2", "từ khóa 3"]
+            elif field_name == "bi_product_area":
+                examples[field_name] = BI_PRODUCT_AREA_VALUES[0]
+            elif field_name == "bi_intent":
+                examples[field_name] = BI_INTENT_VALUES[0]
             else:
                 examples[field_name] = "giá trị phân tích"
         return json.dumps(examples, ensure_ascii=False)
@@ -143,41 +167,12 @@ class EnrichOneUseCase:
         return text[start : end + 1]
 
     @staticmethod
-    def _fallback_topic(mention: Mention) -> TopicFields:
-        # bi_keywords cố tình để rỗng ở fallback: từ khóa là kết quả LLM trích,
-        # không bịa theo luật cứng. LLM hỏng hoàn toàn → không có keyword.
-        text = mention.mention.lower()
-        if any(keyword in text for keyword in ("ví trả sau", "vi tra sau", "vitrả sau")):
-            return TopicFields(bi_topic="thắc mắc phí hủy ví trả sau", bi_product_area="ví trả sau")
-        if any(keyword in text for keyword in ("mbbank", "ngân hàng", "nap", "nạp", "rút", "rut")):
-            return TopicFields(bi_topic="lỗi nạp rút hoặc liên kết ngân hàng", bi_product_area="nạp–rút tiền/liên kết ngân hàng")
-        if any(keyword in text for keyword in ("clone", "lừa", "lua", "scam")):
-            return TopicFields(bi_topic="nghi ngờ lừa đảo hoặc tài khoản ảo", bi_product_area="bảo mật/lừa đảo")
-        return TopicFields(bi_topic="phản hồi tiêu cực chung", bi_product_area="tổng quát")
-
-    @staticmethod
-    def _fallback_judgment(mention: Mention) -> JudgmentFields:
-        text = mention.mention.lower()
-        high_risk = any(keyword in text for keyword in ("lừa", "lua", "scam", "mất tiền", "mat tien", "hack"))
-        question = "?" in text or any(keyword in text for keyword in ("không", "khong", "có", "co", "ạ", "a"))
-        return JudgmentFields(
-            bi_severity=7 if high_risk else 3,
-            bi_intent="cảnh báo/nghi ngờ rủi ro" if high_risk else ("hỏi thông tin" if question else "than phiền lẻ tẻ"),
-            bi_is_actionable=high_risk,
-        )
-
-    @staticmethod
-    def _fallback_summary(mention: Mention, topic: TopicFields) -> SummaryField:
-        return SummaryField(
-            bi_summary_vi=f"Dư luận phản ánh {topic.bi_topic} liên quan đến {topic.bi_product_area}, cần theo dõi để đánh giá tác động tới cảm nhận thương hiệu."
-        )
-
-    @staticmethod
     def _topic_prompt(mention: Mention) -> str:
+        product_areas = ", ".join(f'"{value}"' for value in BI_PRODUCT_AREA_VALUES)
         return f"""
         Bóc tách ba trường phân loại cho mention tiêu cực về ZaloPay dưới đây.
         - bi_topic: chủ đề/vấn đề cốt lõi mà dư luận đang nói, từ vựng mở, một cụm ngắn gọn tiếng Việt (ví dụ "nghi ngờ lừa đảo", "trừ tiền sai", "app lỗi không vào được", "khuyến mãi gây hiểu lầm").
-        - bi_product_area: MẢNG SẢN PHẨM/TÍNH NĂNG CỤ THỂ bên trong ZaloPay bị nhắc tới. TUYỆT ĐỐI KHÔNG ghi "ZaloPay" chung chung (vô nghĩa vì mọi mention đều về ZaloPay). Hãy chọn mảng cụ thể, ví dụ: thanh toán/chuyển tiền, nạp–rút tiền, liên kết ngân hàng, mã QR, ví trả sau, khuyến mãi/voucher, định danh (KYC)/đăng nhập, chăm sóc khách hàng, bảo mật/lừa đảo, hiệu năng ứng dụng. Nếu không xác định được mảng cụ thể thì mới ghi "tổng quát".
+        - bi_product_area: CHỌN ĐÚNG 1 giá trị trong tập enum đóng sau: {product_areas}. TUYỆT ĐỐI KHÔNG ghi "ZaloPay" chung chung. Nếu không xác định được mảng cụ thể thì chọn "khác".
         - bi_keywords: 3–7 từ khóa/cụm từ tiếng Việt NGẮN GỌN rút trực tiếp từ nội dung mention, phục vụ gom nhóm xu hướng & tìm kiếm (ví dụ ["trừ tiền sai", "không hoàn tiền", "tổng đài không phản hồi"]). Viết thường, mỗi từ khóa là một cụm súc tích không trùng lặp, KHÔNG đưa từ "ZaloPay" vào.
 
         Mention: {mention.mention}
@@ -188,10 +183,11 @@ class EnrichOneUseCase:
 
     @staticmethod
     def _judgment_prompt(mention: Mention, topic: TopicFields) -> str:
+        intents = ", ".join(f'"{value}"' for value in BI_INTENT_VALUES)
         return f"""
         Đã xác định chủ đề bi_topic={topic.bi_topic!r}. Hãy đánh giá mention này dưới góc nhìn một người làm truyền thông thương hiệu ZaloPay.
         - bi_severity (mức rủi ro truyền thông, 1–10): 1–2 = than phiền lẻ tẻ, vô hại; 3–4 = bất mãn nhẹ; 5–6 = khiếu nại rõ ràng cần ghi nhận; 7–8 = sự cố dịch vụ ảnh hưởng nhiều người hoặc dễ lan; 9–10 = khủng hoảng khẩn (lừa đảo/mất tiền diện rộng, vấn đề pháp lý/bảo mật, nội dung đang viral bôi nhọ thương hiệu).
-        - bi_intent: ý định thật sự của người nói, mô tả ngắn bằng tiếng Việt (ví dụ "khiếu nại đòi hoàn tiền", "cảnh báo người khác", "mỉa mai châm biếm", "hỏi thông tin", "spam/lạc đề").
+        - bi_intent: CHỌN ĐÚNG 1 giá trị trong tập enum đóng sau: {intents}.
         - bi_is_actionable: true nếu đây là vấn đề CẦN can thiệp/xử lý SỚM (có nguy cơ leo thang thành khủng hoảng truyền thông nếu để lâu); false nếu chỉ là than phiền lẻ tẻ, cảm thán, rác, hoặc không cần phản ứng gấp.
 
         Mention: {mention.mention}

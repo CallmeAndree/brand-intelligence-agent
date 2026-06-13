@@ -9,7 +9,8 @@ function includeNonDone(): boolean {
 
 // Parse query params thành Filters. Tham số vắng → không ràng buộc.
 export function parseFilters(sp: URLSearchParams): Filters {
-  const from = sp.get("from") || process.env.NEXT_PUBLIC_DEFAULT_FROM || "2023-06-01";
+  const from =
+    sp.get("from") || process.env.NEXT_PUBLIC_DEFAULT_FROM || "2023-06-01";
   const to = sp.get("to") || process.env.NEXT_PUBLIC_DEFAULT_TO || "2026-06-30";
   const f: Filters = { from, to };
 
@@ -21,6 +22,10 @@ export function parseFilters(sp: URLSearchParams): Filters {
   if (productArea) f.productArea = productArea;
   const topic = sp.get("topic");
   if (topic) f.topic = topic;
+  const clusterId = sp.get("clusterId");
+  if (clusterId) f.clusterId = clusterId;
+  const keywordGroupId = sp.get("keywordGroupId");
+  if (keywordGroupId) f.keywordGroupId = keywordGroupId;
   const intent = sp.get("intent");
   if (intent) f.intent = intent;
   const actionable = sp.get("actionable");
@@ -30,7 +35,10 @@ export function parseFilters(sp: URLSearchParams): Filters {
 }
 
 // Build $match từ Filters. `withDate=false` để bỏ ràng buộc thời gian (vd đếm pending toàn cục).
-export function buildMatch(f: Filters, opts: { withDate?: boolean; status?: boolean } = {}): Document {
+export function buildMatch(
+  f: Filters,
+  opts: { withDate?: boolean; status?: boolean } = {},
+): Document {
   const { withDate = true, status = true } = opts;
   const match: Document = {};
 
@@ -48,6 +56,10 @@ export function buildMatch(f: Filters, opts: { withDate?: boolean; status?: bool
   if (f.platform) match.platform = f.platform;
   if (f.productArea) match.bi_product_area = f.productArea;
   if (f.topic) match.bi_topic = f.topic;
+  // cluster_id / keyword_group_ids lưu dạng int trong Mongo → ép Number để $match khớp
+  // (keyword_group_ids là mảng int → match value sẽ khớp document có phần tử bằng nó).
+  if (f.clusterId != null) match.cluster_id = Number(f.clusterId);
+  if (f.keywordGroupId != null) match.keyword_group_ids = Number(f.keywordGroupId);
   if (f.intent) match.bi_intent = f.intent;
   if (f.actionableOnly) match.bi_is_actionable = true;
 

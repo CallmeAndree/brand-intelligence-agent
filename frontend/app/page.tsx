@@ -5,11 +5,10 @@ import DateRangeFilter from "@/components/DateRangeFilter";
 import FilterChips from "@/components/FilterChips";
 import KpiStrip from "@/components/KpiStrip";
 import TimelineTrend from "@/components/TimelineTrend";
-import SeverityHistogram from "@/components/SeverityHistogram";
+import KeywordCloud from "@/components/KeywordCloud";
 import PlatformDonut from "@/components/PlatformDonut";
 import ProductAreaBar from "@/components/ProductAreaBar";
 import TopicChart from "@/components/TopicChart";
-import MentionsTable from "@/components/MentionsTable";
 
 export default function DashboardPage() {
   return (
@@ -17,8 +16,12 @@ export default function DashboardPage() {
       <main className="mx-auto max-w-content px-4 py-6">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Brand Intelligence</h1>
-            <p className="text-sm text-ink/50">Theo dõi mention negative về Zalo/ZaloPay</p>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Brand Intelligence
+            </h1>
+            <p className="text-sm text-ink/50">
+              Theo dõi mention negative về ZaloPay
+            </p>
           </div>
           <DateRangeFilter />
         </header>
@@ -41,15 +44,11 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Severity + Product area + Topic */}
+        {/* Keyword + Product area + Topic */}
         <section className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <SeverityHistogram />
+          <KeywordCloud />
           <ProductAreaBar />
           <TopicChart />
-        </section>
-
-        <section>
-          <MentionsTable />
         </section>
       </main>
     </FilterProvider>

@@ -1,10 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.modules.ingestion.domain.models import Mention
-
-if TYPE_CHECKING:
-    from app.modules.enrichment.domain.models import BiFields
 
 
 class MentionRepo(ABC):
@@ -29,7 +26,14 @@ class MentionRepo(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def set_enrichment(self, mention_id: str, fields: "BiFields") -> None:
+    async def save_partial(self, mention_id: str, values: dict[str, Any]) -> None:
+        """Ghi tăng dần một phần kết quả enrich (1 pass / embedding) — KHÔNG đổi
+        status (vẫn pending). Gọi được pass nào lưu pass đó để retry resume được."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def mark_enriched(self, mention_id: str) -> None:
+        """Chốt enrich: lật status=done sau khi mọi pass + embedding đã save_partial."""
         raise NotImplementedError
 
     @abstractmethod

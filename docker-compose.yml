@@ -18,6 +18,19 @@ services:
     depends_on:
       - mongo
 
+  # agent — Runtime 2 (Chat Analyst, AgentBase SDK). Chạy local cho demo; chưa
+  # deploy AgentBase. Không cần Mongo (skeleton chưa retrieval). Đọc API_KEY/BASE_URL/
+  # MINIMAX_MODEL từ agent/.env. PORT ép 8080 trong container → map host 8092 (đổi nếu bận).
+  # Front-end (npm trên host) trỏ AGENT_BASE_URL=http://127.0.0.1:8092.
+  agent:
+    build: ./agent
+    env_file:
+      - agent/.env
+    environment:
+      PORT: "8080"
+    ports:
+      - "8092:8080"
+
   # data-backend — lớp HTTP đặt cạnh Mongo (chạy trên VM). Cloudflare tunnel trỏ vào
   # service này để runtime PUBLIC trên AgentBase đọc/ghi Mongo qua HTTP.
   data-backend:
