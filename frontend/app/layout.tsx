@@ -4,8 +4,8 @@ import TabNav from "@/components/TabNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Brand Intelligence — Dashboard",
-  description: "Theo dõi & phân tích mention negative về ZaloPay",
+  title: "Zalopay 505 · Social Listening",
+  description: "Giám sát & phân tích thảo luận tiêu cực về Zalopay trên mạng xã hội.",
 };
 
 export default function RootLayout({

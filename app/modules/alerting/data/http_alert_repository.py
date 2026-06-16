@@ -54,3 +54,22 @@ class HttpAlertRepository(AlertRepository, LoggerMixin):
             },
         )
         return [Alert.model_validate(doc) for doc in json_util.loads(text)]
+
+    async def ack(self, alert_id: str) -> bool:
+        from datetime import datetime, timezone
+
+        text = await self._post_ejson(
+            "/repo/update-one",
+            {
+                "collection": _COLLECTION,
+                "filter": {"_id": alert_id},
+                "update": {
+                    "$set": {
+                        "acknowledged": True,
+                        "acknowledged_at": datetime.now(timezone.utc),
+                    }
+                },
+            },
+        )
+        result = json_util.loads(text)
+        return int(result.get("modified_count", 0)) > 0

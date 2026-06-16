@@ -1,8 +1,13 @@
-"""RouteDepartmentUseCase — map cụm → phòng ban theo rule playbook `.md`.
+"""RouteDepartmentUseCase — điều phối một cụm về ĐÚNG phòng ban + email.
 
-Rule dạng dòng `product_area_substring => Tên phòng ban` (đọc từ
-`alert/department_routing.md`). Khớp theo `bi_product_area` (ưu tiên) rồi nhãn cụm/
-sample_topics. Không khớp → fallback Marketing/PR. Thuần (không I/O) để test dễ.
+Tín hiệu điều phối CHÍNH là `bi_product_area` (taxonomy 10 mảng nghiệp vụ Zalopay,
+nhãn canonical tiếng Anh). Chọn mảng PHỔ BIẾN NHẤT trong các mention của cụm rồi map
+về ĐÚNG 1 trong 3 phòng (TELCO/LOYALTY/TRANSFER) — KHÔNG còn phòng fallback Brand/PR;
+cả 10 mảng đều có phòng (map ngữ nghĩa ở main.py). Mảng không xác định → `fallback`
+(đặt = TRANSFER ở main.py). Thuần (không I/O) để test dễ.
+
+`routes`/`fallback` được build từ settings ở main.py (email lấy từ .env), nên use
+case không phụ thuộc env trực tiếp.
 """
 
 from dataclasses import dataclass
@@ -10,36 +15,30 @@ from dataclasses import dataclass
 from app.modules.alerting.domain.models import Department
 from app.modules.generation.domain.models import ClusterContext
 
-_FALLBACK = "Marketing/PR"
-
 
 @dataclass(frozen=True)
 class RouteDepartmentUseCase:
-    rules: str  # nội dung playbook department_routing.md
+    routes: dict[str, Department]  # product_area canonical -> Department(name,email)
+    fallback: Department
 
-    def _parse_rules(self) -> list[tuple[str, str]]:
-        pairs: list[tuple[str, str]] = []
-        for line in self.rules.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=>" not in line:
-                continue
-            key, _, dept = line.partition("=>")
-            key, dept = key.strip().lower(), dept.strip()
-            if key and dept:
-                pairs.append((key, dept))
-        return pairs
+    def _dominant_product_area(self, ctx: ClusterContext) -> str | None:
+        counts: dict[str, int] = {}
+        for m in ctx.top_mentions:
+            area = (m.product_area or "").strip()
+            if area:
+                counts[area] = counts.get(area, 0) + 1
+        if not counts:
+            return None
+        # Mảng có nhiều mention nhất (tie-break theo tên cho ổn định/deterministic).
+        return max(sorted(counts), key=lambda area: counts[area])
 
     def execute(self, ctx: ClusterContext) -> Department:
-        rules = self._parse_rules()
-        # Gom văn bản đại diện cụm để dò khớp.
-        haystacks = [ctx.label.lower()]
-        haystacks += [t.lower() for t in ctx.sample_topics]
-        haystacks += [
-            (m.product_area or "").lower() for m in ctx.top_mentions if m.product_area
-        ]
-        blob = " | ".join(haystacks)
-
-        for key, dept in rules:
-            if key in blob:
-                return Department(name=dept, rationale=f"khớp rule '{key}'")
-        return Department(name=_FALLBACK, rationale="không khớp rule — fallback")
+        area = self._dominant_product_area(ctx)
+        if area and area in self.routes:
+            dept = self.routes[area]
+            return dept.model_copy(
+                update={"rationale": f"mảng '{area}' → phòng {dept.name}"}
+            )
+        return self.fallback.model_copy(
+            update={"rationale": f"mảng '{area or 'không xác định'}' → phòng {self.fallback.name} (mặc định)"}
+        )

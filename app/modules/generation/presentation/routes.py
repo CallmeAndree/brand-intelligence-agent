@@ -14,9 +14,24 @@ from fastapi.responses import StreamingResponse
 from app.core.auth import verify_runtime1_token
 from app.core.response import StandardResponse, create_success_response
 from app.modules.generation.domain.models import ArtifactStatus, ArtifactType, MonitorArtifact
-from app.modules.generation.presentation.schemas import GenerateRequest
+from app.modules.generation.presentation.schemas import ChatGenerateRequest, GenerateRequest
 
 router = APIRouter(tags=["generation"], dependencies=[Depends(verify_runtime1_token)])
+
+# 3 skill chat tự do (content/design_brief/response_plan) + 5 skill Monitor revise-từ-chat
+# (narrative/root_cause/response_strategy/brand_voice/seeding_comments). Cả 8 đều đi
+# /generate(/stream) qua `chat_generation_usecases` (ngữ cảnh tự do, KHÔNG bắt buộc
+# ClusterContext). Type ngoài tập này → 400.
+_CHAT_SKILL_TYPES = {
+    ArtifactType.CONTENT,
+    ArtifactType.DESIGN_BRIEF,
+    ArtifactType.RESPONSE_PLAN,
+    ArtifactType.NARRATIVE,
+    ArtifactType.ROOT_CAUSE,
+    ArtifactType.RESPONSE_STRATEGY,
+    ArtifactType.BRAND_VOICE,
+    ArtifactType.SEEDING_COMMENTS,
+}
 
 
 def _sse(event: str, data: dict) -> str:
@@ -42,7 +57,7 @@ async def generate(
     if ctx is None:
         raise HTTPException(status_code=404, detail=f"cluster {cluster_id} không có dữ liệu")
 
-    artifact = await usecase.execute(ctx)
+    artifact = await usecase.execute(ctx, payload.instruction)
     await repo.insert_draft(artifact)
     return create_success_response(artifact)
 
@@ -73,10 +88,105 @@ async def generate_stream(
         yield _sse("meta", {"type": payload.type, "cluster_id": cluster_id})
         chunks: list[str] = []
         try:
-            async for delta in usecase.stream(ctx):
+            async for delta in usecase.stream(ctx, payload.instruction):
                 chunks.append(delta)
                 yield _sse("delta", {"text": delta})
             artifact = usecase.build(ctx, "".join(chunks))
+            await repo.insert_draft(artifact)
+            yield _sse("done", {"artifact": json.loads(artifact.model_dump_json(by_alias=True))})
+        except Exception as exc:  # noqa: BLE001 — báo lỗi qua SSE, không nuốt im lặng
+            yield _sse("error", {"message": f"{type(exc).__name__}: {exc}"[:300]})
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/generate", response_model=StandardResponse[MonitorArtifact])
+async def chat_generate(
+    payload: ChatGenerateRequest,
+    request: Request,
+) -> StandardResponse[MonitorArtifact]:
+    """Sinh nội dung từ chat (3 skill). Ngữ cảnh tự do + (tùy chọn) ClusterContext.
+
+    Ghi `monitor_artifacts` với `created_by="chat"` + `session_id`. RT2 gọi vào đây
+    (kèm X-Runtime1-Token), KHÔNG ghi Mongo trực tiếp.
+    """
+    if payload.type not in _CHAT_SKILL_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"/generate chỉ nhận type: {[t.value for t in _CHAT_SKILL_TYPES]}",
+        )
+
+    usecases = request.app.state.chat_generation_usecases
+    repo = request.app.state.monitor_artifact_repo
+    usecase = usecases.get(ArtifactType(payload.type))
+    if usecase is None:
+        raise HTTPException(status_code=400, detail=f"unknown skill type: {payload.type}")
+
+    context = payload.context or ""
+    # Có cluster_id → dựng ClusterContext và chèn lên đầu ngữ cảnh (bám dẫn chứng cụm).
+    if payload.cluster_id is not None:
+        builder = request.app.state.cluster_context_builder
+        ctx = await builder.build(payload.cluster_id)
+        if ctx is not None:
+            block = ctx.to_prompt_block()
+            context = f"{block}\n\n{context}".strip() if context else block
+
+    artifact = await usecase.execute(
+        context,
+        instruction=payload.instruction,
+        cluster_id=payload.cluster_id,
+        session_id=payload.session_id,
+    )
+    await repo.insert_draft(artifact)
+    return create_success_response(artifact)
+
+
+@router.post("/generate/stream")
+async def chat_generate_stream(
+    payload: ChatGenerateRequest,
+    request: Request,
+) -> StreamingResponse:
+    """Bản SSE của `/generate` — stream từng delta nội dung skill chat, lưu draft khi xong.
+
+    RT2 gọi vào (kèm X-Runtime1-Token) rồi forward delta về chat UI để skill cũng
+    streaming như chat thường. Sự kiện: `meta` → nhiều `delta` ({text}) → `done`
+    ({artifact}) | `error`. Ghi `monitor_artifacts` (created_by="chat") sau khi xong.
+    """
+    if payload.type not in _CHAT_SKILL_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"/generate/stream chỉ nhận type: {[t.value for t in _CHAT_SKILL_TYPES]}",
+        )
+
+    usecases = request.app.state.chat_generation_usecases
+    repo = request.app.state.monitor_artifact_repo
+    usecase = usecases.get(ArtifactType(payload.type))
+    if usecase is None:
+        raise HTTPException(status_code=400, detail=f"unknown skill type: {payload.type}")
+
+    context = payload.context or ""
+    # Có cluster_id → dựng ClusterContext và chèn lên đầu ngữ cảnh (bám dẫn chứng cụm).
+    if payload.cluster_id is not None:
+        builder = request.app.state.cluster_context_builder
+        ctx = await builder.build(payload.cluster_id)
+        if ctx is not None:
+            block = ctx.to_prompt_block()
+            context = f"{block}\n\n{context}".strip() if context else block
+
+    async def event_source():
+        yield _sse("meta", {"type": payload.type, "cluster_id": payload.cluster_id})
+        chunks: list[str] = []
+        try:
+            async for delta in usecase.stream(context, payload.instruction):
+                chunks.append(delta)
+                yield _sse("delta", {"text": delta})
+            artifact = usecase.build(
+                "".join(chunks), cluster_id=payload.cluster_id, session_id=payload.session_id
+            )
             await repo.insert_draft(artifact)
             yield _sse("done", {"artifact": json.loads(artifact.model_dump_json(by_alias=True))})
         except Exception as exc:  # noqa: BLE001 — báo lỗi qua SSE, không nuốt im lặng

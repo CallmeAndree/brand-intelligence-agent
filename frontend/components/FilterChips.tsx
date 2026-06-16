@@ -40,7 +40,7 @@ export default function FilterChips() {
         return (
           <span
             key={dim}
-            className="inline-flex items-center gap-1.5 rounded-full bg-feature-cream px-3 py-1 text-sm"
+            className="inline-flex items-center gap-1.5 rounded-full bg-feature-cream px-3 py-1 text-caption"
           >
             {text}
             <button
@@ -55,7 +55,7 @@ export default function FilterChips() {
       })}
       <button
         onClick={clearAll}
-        className="text-sm text-ink/60 underline hover:text-ink"
+        className="text-body-sm text-ink/60 underline hover:text-ink"
       >
         Xóa tất cả
       </button>

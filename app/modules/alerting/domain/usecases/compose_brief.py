@@ -14,9 +14,11 @@ from app.modules.alerting.domain.models import Department
 from app.modules.generation.domain.models import ClusterContext
 
 _PERSONA = (
-    "Bạn là chuyên gia cảnh báo khủng hoảng truyền thông của ZaloPay (ZLP) — ví điện "
-    "tử thuộc VNG. CHỈ về ZaloPay, KHÔNG bao gồm Zalo (app chat). Viết brief tiếng "
-    "Việt, Markdown sạch (heading/bullet/in đậm), ngắn gọn, hướng hành động."
+    "Bạn là chuyên gia cảnh báo khủng hoảng truyền thông của Zalopay (ZLP) — ví điện "
+    "tử thuộc VNG. CHỈ về Zalopay, KHÔNG bao gồm Zalo (app chat). Chính tả thương "
+    "hiệu BẮT BUỘC: luôn viết đúng 'Zalopay' — KHÔNG viết 'ZaloPay'/'Zalo Pay'/"
+    "'zalopay'. Viết brief tiếng Việt, Markdown sạch (heading/bullet/in đậm), "
+    "ngắn gọn, hướng hành động."
 )
 
 

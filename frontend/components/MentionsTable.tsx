@@ -17,14 +17,14 @@ export default function MentionsTable() {
   const filterKey = filtersToQuery(filters);
   useEffect(() => setSkip(0), [filterKey]);
 
-  const { data, loading, error } = useStats<MentionsPage>("/api/mentions", {
+  const { data, loading, validating, error } = useStats<MentionsPage>("/api/mentions", {
     skip,
     limit: PAGE,
   });
 
   const total = data?.total ?? 0;
   const toggle = (
-    <label className="flex items-center gap-2 text-xs text-ink/70">
+    <label className="flex items-center gap-2 text-caption text-ink/70">
       <input
         type="checkbox"
         checked={!!filters.actionableOnly}
@@ -35,24 +35,29 @@ export default function MentionsTable() {
   );
 
   return (
-    <Card title={`Danh sách mention${total ? ` (${total.toLocaleString("vi-VN")})` : ""}`} right={toggle}>
-      {loading ? (
+    <Card
+      title={`Danh sách mention${total ? ` (${total.toLocaleString("vi-VN")})` : ""}`}
+      right={toggle}
+      className="flex h-full min-h-0 flex-col"
+    >
+      {/* Stale-while-revalidate: chỉ blank lần đầu (chưa có data); đổi trang/filter giữ rows cũ. */}
+      {loading && !data ? (
         <Loading />
-      ) : error ? (
+      ) : error && !data ? (
         <ErrorBox message={error} />
       ) : !data || data.data.length === 0 ? (
         <EmptyState />
       ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-ink/50">
+        <div className={`flex min-h-0 flex-1 flex-col transition-opacity ${validating ? "opacity-60" : ""}`}>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+            <table className="w-full text-body-sm">
+              <thead className="sticky top-0 z-10 bg-canvas text-left text-ink/50">
                 <tr className="border-b border-ink/10">
                   <th className="py-2 pr-3 font-medium">Ngày</th>
                   <th className="py-2 pr-3 font-medium">Mức</th>
                   <th className="py-2 pr-3 font-medium">Nền tảng</th>
                   <th className="py-2 pr-3 font-medium">Ý định</th>
-                  <th className="py-2 pr-3 font-medium">Tóm tắt</th>
+                  <th className="py-2 pr-3 font-medium">Mention</th>
                   <th className="py-2 font-medium">Link</th>
                 </tr>
               </thead>
@@ -67,7 +72,7 @@ export default function MentionsTable() {
                       <td className="py-2 pr-3">
                         {m.bi_severity != null ? (
                           <span
-                            className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+                            className="inline-block rounded px-1.5 py-0.5 text-caption font-semibold text-white"
                             style={{ backgroundColor: band ? bandColor(band) : "#c9c2b0" }}
                           >
                             {m.bi_severity}
@@ -80,8 +85,8 @@ export default function MentionsTable() {
                         {m.platform ?? m.source ?? "—"}
                       </td>
                       <td className="py-2 pr-3 text-ink/70">{m.bi_intent ?? "—"}</td>
-                      <td className="py-2 pr-3 max-w-[420px]">
-                        {m.bi_summary_vi ?? m.mention?.slice(0, 120) ?? "—"}
+                      <td className="py-2 pr-3 max-w-[420px] whitespace-pre-wrap break-words">
+                        {m.mention?.trim() || "—"}
                       </td>
                       <td className="py-2">
                         {m.url ? (
@@ -89,7 +94,7 @@ export default function MentionsTable() {
                             href={m.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-feature-pink underline"
+                            className="text-feature-blue underline"
                           >
                             mở
                           </a>
@@ -103,7 +108,7 @@ export default function MentionsTable() {
               </tbody>
             </table>
           </div>
-          <div className="mt-3 flex items-center justify-between text-sm text-ink/60">
+          <div className="mt-3 flex shrink-0 items-center justify-between text-body-sm text-ink/60">
             <span>
               {skip + 1}–{Math.min(skip + PAGE, total)} / {total.toLocaleString("vi-VN")}
             </span>
@@ -124,7 +129,7 @@ export default function MentionsTable() {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
     </Card>
   );

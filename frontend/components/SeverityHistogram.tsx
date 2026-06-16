@@ -8,13 +8,17 @@ import { SEVERITY_BANDS } from "@/lib/severity";
 import type { CountItem, SeverityBand } from "@/lib/types";
 
 export default function SeverityHistogram() {
-  const { setDim } = useFilters();
-  const { data, loading, error } = useStats<CountItem[]>("/api/stats/severity");
+  const { setDim, clearAll } = useFilters();
+  const { data, loading, validating, error } = useStats<CountItem[]>("/api/stats/severity");
 
   return (
-    <Card title="Phân bố mức độ nghiêm trọng">
+    <Card
+      title="Phân bố mức độ nghiêm trọng"
+      subtitle="Số lượng mention theo từng nhóm mức độ (Low → Critical). Bấm một cột để lọc theo nhóm."
+    >
       <StatefulChart
         loading={loading}
+        validating={validating}
         error={error}
         data={data}
         isEmpty={(d) => d.every((x) => x.count === 0)}
@@ -44,7 +48,7 @@ export default function SeverityHistogram() {
             const band = d[p.dataIndex]?.key as SeverityBand;
             if (band) setDim("severityBand", band);
           };
-          return <EChart option={option} height={260} onEvents={{ click: onClick }} />;
+          return <EChart option={option} height={260} onEvents={{ click: onClick }} onBlankClick={clearAll} downloadName="phan-bo-muc-do-nghiem-trong" />;
         }}
       </StatefulChart>
     </Card>

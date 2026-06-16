@@ -11,8 +11,6 @@ export const dynamic = "force-dynamic";
 //  - gắn header session/user mà AgentBase Memory service đọc (slice sau).
 // Khi Runtime 2 lên AgentBase: chỉ đổi AGENT_BASE_URL trong .env.local.
 
-const PROXY_TIMEOUT_MS = 30_000;
-
 interface ChatRequestBody {
   session_id?: string;
   user_id?: string;
@@ -20,6 +18,11 @@ interface ChatRequestBody {
   kind?: string;
   content_md?: string;
   cluster_id?: number;
+  skill_type?: string;
+  // Nội dung gốc ghim khi revise một artifact Monitor (D7) — đính lại MỖI lượt follow-up.
+  base_content?: string;
+  // Tham số truy xuất chính xác cho explain (from/to + dimension→param) → RT2 prefetch dữ liệu thật.
+  explain_query?: Record<string, unknown>;
 }
 
 // Luôn trả ChatMessage assistant (HTTP 200) → UI render bubble (kể cả lỗi).
@@ -36,9 +39,10 @@ export async function POST(req: NextRequest) {
   }
 
   const isInject = body.kind === "context_inject";
+  const isSkill = body.kind === "skill";
   const message = body.message?.trim();
-  // context_inject không cần message text — chỉ cần content_md.
-  if (!isInject && !message) return assistant("Bạn hãy nhập câu hỏi nhé.");
+  // context_inject cần content_md; skill cần skill_type — cả hai không cần message text.
+  if (!isInject && !isSkill && !message) return assistant("Bạn hãy nhập câu hỏi nhé.");
 
   const baseUrl = process.env.AGENT_BASE_URL;
   if (!baseUrl) {
@@ -49,8 +53,6 @@ export async function POST(req: NextRequest) {
   const sessionId = body.session_id ?? "";
   const userId = body.user_id ?? "demo";
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
   try {
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/invocations`, {
       method: "POST",
@@ -66,8 +68,11 @@ export async function POST(req: NextRequest) {
         kind: body.kind,
         content_md: body.content_md,
         cluster_id: body.cluster_id,
+        skill_type: body.skill_type,
+        base_content: body.base_content,
+        explain_query: body.explain_query,
       }),
-      signal: controller.signal,
+      // KHÔNG đặt timeout cố định: lượt chat stream giữ kết nối lâu (tới hết câu trả lời).
     });
 
     if (!res.ok) {
@@ -76,22 +81,30 @@ export async function POST(req: NextRequest) {
       return assistant(`Xin lỗi, dịch vụ trả lời đang gặp sự cố (mã ${res.status}). Bạn thử lại sau nhé.`);
     }
 
-    // Runtime 2 trả ChatMessage JSON. Chuẩn hóa phòng thủ role/text.
-    const data = (await res.json()) as Partial<ChatMessage>;
-    return NextResponse.json<ChatMessage>({
-      ...data,
-      role: "assistant",
-      text: data.text ?? "",
+    // context_inject → Runtime 2 trả JSON ChatMessage. Chuẩn hóa role/text.
+    if (isInject) {
+      const data = (await res.json()) as Partial<ChatMessage>;
+      return NextResponse.json<ChatMessage>({
+        ...data,
+        role: "assistant",
+        text: data.text ?? "",
+      });
+    }
+
+    // Lượt chat → pass-through nguyên body + GIỮ ĐÚNG content-type của Runtime 2:
+    //  - Runtime 2 mới (streaming) → text/event-stream → FE parse SSE token.
+    //  - Runtime 2 cũ (chưa redeploy) → application/json → FE fallback đọc 1 phát.
+    // (Ép cứng event-stream lên body JSON sẽ khiến FE parse rỗng → không hiện bubble.)
+    const upstreamType = res.headers.get("content-type") ?? "application/json";
+    return new Response(res.body, {
+      headers: {
+        "content-type": upstreamType,
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+      },
     });
   } catch (err) {
-    const aborted = err instanceof Error && err.name === "AbortError";
     console.error("[api/chat]", err);
-    return assistant(
-      aborted
-        ? "Yêu cầu mất quá nhiều thời gian (timeout). Bạn thử lại nhé."
-        : "Không kết nối được tới dịch vụ trả lời. Bạn thử lại sau nhé."
-    );
-  } finally {
-    clearTimeout(timer);
+    return assistant("Không kết nối được tới dịch vụ trả lời. Bạn thử lại sau nhé.");
   }
 }

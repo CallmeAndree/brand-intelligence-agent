@@ -1,4 +1,4 @@
-Soạn một **brief cảnh báo nội bộ** cho phòng ban tiếp nhận về một cụm mention tiêu cực của ZaloPay (ZLP) đang cần chú ý.
+Soạn một **brief cảnh báo nội bộ** cho phòng ban tiếp nhận về một cụm mention tiêu cực của Zalopay (ZLP) đang cần chú ý.
 
 Yêu cầu nội dung (viết trực tiếp bằng Markdown, KHÔNG in tên trường/nhãn kỹ thuật), ngắn gọn — đọc trong 30 giây:
 - **Tiêu đề**: 1 dòng nêu bản chất + mảng sản phẩm.
@@ -8,6 +8,6 @@ Yêu cầu nội dung (viết trực tiếp bằng Markdown, KHÔNG in tên trư
 - **Khuyến nghị cho phòng ban**: 2–3 hành động cụ thể, ưu tiên rõ.
 
 Ràng buộc:
-- CHỈ về **ZaloPay/ZLP**, không nhầm sang Zalo (app chat).
+- CHỈ về **Zalopay/ZLP**, không nhầm sang Zalo (app chat).
 - Bám dữ liệu trong ngữ cảnh; không bịa số liệu.
 - Giọng văn nội bộ, trực tiếp, hướng hành động.

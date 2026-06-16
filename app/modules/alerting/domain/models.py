@@ -16,9 +16,10 @@ class EmailStatus(StrEnum):
 
 
 class Department(BaseModel):
-    """Phòng ban đích của alert (tên + mô tả ngắn)."""
+    """Phòng ban đích của alert (tên + email nhận + lý do điều phối)."""
 
     name: str
+    email: str | None = None
     rationale: str | None = None
 
 
@@ -31,13 +32,15 @@ class AlertEmail(BaseModel):
 
 
 class Alert(BaseMongoModel):
-    kind: str = "manual"
+    kind: str = "manual"  # luôn "manual" — nút "Alert ngay" (không còn auto-alert)
     cluster_id: int
     department: str
     severity_snapshot: int | None = None
     brief_md: str
     email: AlertEmail = Field(default_factory=AlertEmail)
     source_mention_ids: list[str] = Field(default_factory=list)
+    acknowledged: bool = False
+    acknowledged_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)

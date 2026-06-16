@@ -9,10 +9,21 @@ services:
   app:
     build: .
     env_file:
+      # Nạp .env.deploy TRƯỚC để lấy creds SMTP (SEND_EMAIL/EMAIL_APP_PASSWORD/RECEIVE_*)
+      # đã cấu hình sẵn cho deploy, rồi .env override các key local. required:false →
+      # không vỡ nếu máy chưa có .env.deploy.
+      - path: .env.deploy
+        required: false
       - .env
     environment:
       MONGODB_URI: mongodb://mongo:27017/brand_intel_dev
       MONGO_DB: brand_intel_dev
+      # Ép local dùng Mongo trực tiếp — chặn REPO_MODE=http (từ .env.deploy, dành cho
+      # runtime PUBLIC trên AgentBase) khiến app local quay sang data-backend/tunnel rồi hỏng.
+      REPO_MODE: mongo
+      # Hộp chung cho phòng fallback "Brand/PR" (mảng không thuộc Telco/Loyalty/Transfer).
+      # Set ở đây vì .env bị chặn ghi; override env_file. Đổi địa chỉ nếu cần.
+      RECEIVE_EMAIL: ${RECEIVE_EMAIL:-anhpn8@vng.com.vn}
     ports:
       - "8090:8080"
     depends_on:
@@ -20,14 +31,30 @@ services:
 
   # agent — Runtime 2 (Chat Analyst, AgentBase SDK). Chạy local cho demo; chưa
   # deploy AgentBase. Không cần Mongo (skeleton chưa retrieval). Đọc API_KEY/BASE_URL/
-  # MINIMAX_MODEL từ agent/.env. PORT ép 8080 trong container → map host 8092 (đổi nếu bận).
-  # Front-end (npm trên host) trỏ AGENT_BASE_URL=http://127.0.0.1:8092.
+  # MINIMAX_MODEL + MEMORY_ID từ agent/.env. PORT ép 8080 trong container → map host 8092
+  # (đổi nếu bận). Front-end (npm trên host) trỏ AGENT_BASE_URL=http://127.0.0.1:8092.
+  #
+  # MEMORY local: trên AgentBase, creds GREENNODE_CLIENT_ID/SECRET do runtime tự inject.
+  # Chạy local KHÔNG có inject → MemoryClient() fail → degrade no-memory. Để TEST memory
+  # dưới localhost:3000 (đúng memory service cloud như deployment), bơm IAM creds (cùng
+  # creds 'make memory-create' đã dùng) vào container: interpolate IAM_CLIENT_ID/SECRET
+  # từ .env cùng thư mục — KHÔNG nhân đôi secret vào agent/.env. MEMORY_ID trong agent/.env
+  # đã trỏ store thật → memory bật ngay sau 'make rebuild'.
   agent:
     build: ./agent
     env_file:
       - agent/.env
     environment:
       PORT: "8080"
+      GREENNODE_CLIENT_ID: ${IAM_CLIENT_ID:-}
+      GREENNODE_CLIENT_SECRET: ${IAM_CLIENT_SECRET:-}
+      # RT2 gọi RT1 (sinh nội dung /generate/stream, text-to-query /query/*, persona)
+      # qua mạng compose: tên service `app` + port container 8080. Token phải KHỚP
+      # RUNTIME1_API_TOKEN trong root .env (app dùng env_file .env; agent nhận qua interpolate).
+      RUNTIME1_BASE_URL: http://app:8080
+      RUNTIME1_API_TOKEN: ${RUNTIME1_API_TOKEN:-}
+    depends_on:
+      - app
     ports:
       - "8092:8080"
 

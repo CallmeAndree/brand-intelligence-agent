@@ -6,12 +6,12 @@ from app.modules.clustering.domain.repository import ClusterRepo
 
 
 class MongoClusterRepository(ClusterRepo):
-    """Impl Mongo của ClusterRepo — collections `clusters`/`keyword_groups`,
+    """Impl Mongo của ClusterRepo — collections `topic_cluster`/`keyword_groups`,
     và `$set` field cụm ngược về `mentions`. CRUD thuần, không giữ cache
     (cache centroid nằm ở AssignClustersUseCase)."""
 
     def __init__(self, db: AsyncDatabase) -> None:
-        self.clusters = db["clusters"]
+        self.clusters = db["topic_cluster"]
         self.keyword_groups = db["keyword_groups"]
         self.mentions = db["mentions"]
 
@@ -20,7 +20,12 @@ class MongoClusterRepository(ClusterRepo):
         await self.keyword_groups.create_index([("label", ASCENDING)])
 
     async def load_clusters(self) -> list[Cluster]:
-        return [Cluster.model_validate(doc) async for doc in self.clusters.find({})]
+        # Chỉ nạp cụm có `centroid` (vector) cho so khớp online. Bỏ qua doc thiếu centroid
+        # (vd cụm fixture/route-only) để không vỡ startup — routing đọc mentions, không cần centroid.
+        return [
+            Cluster.model_validate(doc)
+            async for doc in self.clusters.find({"centroid": {"$exists": True, "$type": "array"}})
+        ]
 
     async def load_keyword_groups(self) -> list[KeywordGroup]:
         return [KeywordGroup.model_validate(doc) async for doc in self.keyword_groups.find({})]

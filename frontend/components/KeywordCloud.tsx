@@ -1,14 +1,19 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import EChart from "./EChart";
 import { Card, StatefulChart } from "./ui";
 import { useStats } from "@/lib/useStats";
 import { useFilters } from "@/lib/filters";
+import { resetSession, queueExplainContext } from "@/lib/chat";
 import { CATEGORICAL_PALETTE } from "@/lib/severity";
+import { getChartFontFamily } from "@/lib/chartFont";
 import type { KeywordItem } from "@/lib/types";
 
-const VIETNAMESE_FONT_FAMILY =
-  'Inter, "Noto Sans", "Noto Sans Vietnamese", "Helvetica Neue", Arial, sans-serif';
+// Font app (Aeonik + Inter fallback) + thêm các font giàu dấu tiếng Việt làm cứu cánh cho glyph thiếu.
+// Hàm (không phải const module) để resolve lúc render — tránh kẹt fallback nếu chạy trước khi CSS var sẵn sàng.
+const wordCloudFontFamily = () =>
+  `${getChartFontFamily()}, "Noto Sans", "Noto Sans Vietnamese", "Helvetica Neue", Arial, sans-serif`;
 
 const WORD_CLOUD_COLORS = [
   "#5fb0e5",
@@ -26,21 +31,27 @@ function normalizeKeywordLabel(label: string) {
 }
 
 export default function KeywordCloud() {
-  const { setDim } = useFilters();
-  const { data, loading, error } = useStats<KeywordItem[]>(
+  const router = useRouter();
+  const { filters, setDim, clearAll } = useFilters();
+  const { data, loading, validating, error } = useStats<KeywordItem[]>(
     "/api/stats/keywords",
     { limit: 50 },
   );
 
   return (
-    <Card title="Từ khóa nổi bật">
+    <Card
+      title="Từ khóa nổi bật"
+      subtitle="Từ khóa xuất hiện nhiều trong mention; chữ càng to càng phổ biến. Bấm một từ để lọc."
+    >
       <StatefulChart
         loading={loading}
+        validating={validating}
         error={error}
         data={data}
         isEmpty={(d) => d.length === 0}
       >
         {(d) => {
+          const VIETNAMESE_FONT_FAMILY = wordCloudFontFamily();
           const keywords = d
             .map((item) => ({
               ...item,
@@ -135,11 +146,35 @@ export default function KeywordCloud() {
             if (item?.keyword_group_id)
               setDim("keywordGroupId", item.keyword_group_id);
           };
+          // Chuột phải một từ khóa → mở phiên Chat mới phân tích từ khóa đó.
+          const onExplain = (p: any) => {
+            const name = String(p?.name ?? "");
+            if (!name) return;
+            // id nhóm từ khóa → get_mentions lọc đúng keyword_group_ids (nhãn nhóm ≠ chuỗi
+            // trong mention nên text_contains literal ra rỗng). Tra như onClick; coerce số
+            // (KeywordItem.keyword_group_id kiểu string, DB lưu số — khớp aggregations.ts).
+            const gidRaw = keywords.find((x) => x.label === name)?.keyword_group_id;
+            const gid = gidRaw != null && gidRaw !== "" ? Number(gidRaw) : undefined;
+            resetSession();
+            queueExplainContext({
+              source: "dashboard",
+              dimension: "keyword",
+              value: name,
+              label: `Từ khóa "${name}"`,
+              metric: { name: "Tần suất", value: Number(p?.value ?? 0) },
+              keyword_group_id: gid != null && Number.isFinite(gid) ? gid : undefined,
+              filters,
+            });
+            router.push("/chat");
+          };
           return (
             <EChart
               option={option}
-              height={340}
+              height={400}
               onEvents={{ click: onClick }}
+              onBlankClick={clearAll}
+              onExplain={onExplain}
+              downloadName="tu-khoa-noi-bat"
             />
           );
         }}

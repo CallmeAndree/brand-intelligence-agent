@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Keyword khớp bằng max-linkage (member gần nhất) → ngưỡng cao hơn topic; 0.85 tách
     # sạch trên qwen3-embedding-8b (mô phỏng: ~31 nhóm, nhóm lớn nhất ~10, không snowball).
     keyword_cosine_threshold: float = Field(default=0.85, alias="KEYWORD_COSINE_THRESHOLD")
+    # Tự động chạy batch clustering (embed_cluster) sau mỗi ĐỢT ingest — debounce: sau khi
+    # 1+ mention enrich xong, chờ `debounce_seconds` "yên" (không có mention mới) rồi gom batch
+    # 1 lần (gộp cả đợt). Chỉ chạy khi REPO_MODE=mongo (cần Mongo trực tiếp). Tắt bằng env.
+    cluster_auto_rebuild_enabled: bool = Field(default=True, alias="CLUSTER_AUTO_REBUILD_ENABLED")
+    cluster_rebuild_debounce_seconds: float = Field(default=60.0, alias="CLUSTER_REBUILD_DEBOUNCE_SECONDS")
 
     # Repository backend selection:
     #   "mongo" (default) — kết nối Mongo trực tiếp qua PyMongo (dev/VM local).
@@ -49,7 +54,7 @@ class Settings(BaseSettings):
     # Whitelist collection được phép GHI qua facade insert-one/update-one. Facade lộ
     # public qua tunnel → chặn ghi tùy ý ngoài danh sách (trả 400). CSV trong env.
     data_backend_write_whitelist: str = Field(
-        default="mentions,alerts,monitor_artifacts,clusters,keyword_groups",
+        default="mentions,alerts,monitor_artifacts,topic_cluster,keyword_groups",
         alias="DATA_BACKEND_WRITE_WHITELIST",
     )
 
@@ -67,10 +72,20 @@ class Settings(BaseSettings):
     # Creds chỉ ở .env/.env.deploy (KHÔNG commit). SEND_EMAIL = SMTP user = sender;
     # RECEIVE_EMAIL = recipient demo; EMAIL_APP_PASSWORD = Gmail app password.
     send_email: str = Field(default="", alias="SEND_EMAIL")
-    receive_email: str = Field(default="", alias="RECEIVE_EMAIL")
+    receive_email: str = Field(default="", alias="RECEIVE_EMAIL")  # hộp chung / fallback
     email_app_password: str = Field(default="", alias="EMAIL_APP_PASSWORD")
     smtp_host: str = Field(default="smtp.gmail.com", alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    # Điều phối alert về ĐÚNG phòng ban theo bi_product_area (manual & auto đều dùng):
+    #   product_area "Telco"    → phòng TELCO    → RECEIVE_TELCO_EMAIL
+    #   product_area "Loyalty"  → phòng LOYALTY  → RECEIVE_LOYALTY_EMAIL
+    #   product_area "Transfer" → phòng TRANSFER → RECEIVE_TRANSFER_EMAIL
+    # Các mảng khác → hộp chung RECEIVE_EMAIL. Thiếu email phòng → fallback RECEIVE_EMAIL.
+    receive_telco_email: str = Field(default="", alias="RECEIVE_TELCO_EMAIL")
+    receive_loyalty_email: str = Field(default="", alias="RECEIVE_LOYALTY_EMAIL")
+    receive_transfer_email: str = Field(default="", alias="RECEIVE_TRANSFER_EMAIL")
+
+    # (Auto-alert velocity ĐÃ GỠ — chỉ còn alert thủ công qua POST /alerts/manual.)
 
     # Memory AgentBase (Runtime 2). Optional khi chưa cấu hình → chat degrade về no-memory.
     memory_id: str = Field(default="", alias="MEMORY_ID")

@@ -65,6 +65,13 @@ export interface TopicItem extends CountItem {
   mode?: "cluster" | "raw";
 }
 
+// Ma trận ưu tiên xử lý (scatter): volume × severity TB mỗi product area.
+export interface RiskMatrixItem {
+  key: string;
+  volume: number;
+  sev: number;
+}
+
 export interface KeywordItem {
   label: string;
   weight: number;
@@ -77,10 +84,22 @@ export interface MentionsPage {
   total: number;
 }
 
-// ---- Chart wrapper ----
+// ---- Chart spec tối giản (chat inline) ----
+// Backend (RT1 /query get_trend|compare_periods) emit shape này; FE dựng option
+// ECharts từ nó trong ChatMessageBubble. Giữ tối giản để LLM/loop không phải biết
+// cú pháp ECharts đầy đủ. (D5 add-chat-tools-memory)
+export type EChartType = "line" | "bar";
+
+export interface EChartSeries {
+  name?: string;
+  data: number[];
+}
+
 export interface EChartSpec {
+  type: EChartType;
   title?: string;
-  option: Record<string, unknown>;
+  xAxis?: (string | number)[];
+  series: EChartSeries[];
 }
 
 // ---- Chat (contract chung FE ↔ proxy/Runtime 2 — chatbot-frontend.md §2) ----
@@ -103,6 +122,13 @@ export interface ChatMessage {
   charts?: EChartSpec[];
   citations?: ChatCitation[];
   refs?: ChatRef[];
+}
+
+// ---- Chat history (memory List Sessions/Events) ----
+export interface ChatSessionSummary {
+  session_id: string;
+  updated_at?: string | null;
+  preview?: string;
 }
 
 // ---- Monitor workspace (cụm critical + artifact AI) ----

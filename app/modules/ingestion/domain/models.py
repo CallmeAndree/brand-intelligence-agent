@@ -31,6 +31,7 @@ class Mention(BaseMongoModel):
     bi_product_area: str | None = None
     bi_keywords: list[str] | None = None
     bi_severity: int | None = None
+    bi_severity_factors: list[str] | None = None
     bi_intent: str | None = None
     bi_is_actionable: bool | None = None
     bi_summary_vi: str | None = None

@@ -1,6 +1,6 @@
 """Impl Mongo của AlertRepository (REPO_MODE=mongo)."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pymongo import ASCENDING, DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
@@ -26,3 +26,10 @@ class MongoAlertRepository(AlertRepository):
             query["created_at"] = {"$gte": datetime.fromisoformat(since)}
         cursor = self.collection.find(query).sort([("created_at", DESCENDING)]).limit(limit)
         return [Alert.model_validate(doc) async for doc in cursor]
+
+    async def ack(self, alert_id: str) -> bool:
+        result = await self.collection.update_one(
+            {"_id": alert_id},
+            {"$set": {"acknowledged": True, "acknowledged_at": datetime.now(timezone.utc)}},
+        )
+        return result.modified_count > 0

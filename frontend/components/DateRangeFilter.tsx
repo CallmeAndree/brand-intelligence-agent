@@ -7,7 +7,7 @@ export default function DateRangeFilter() {
   const isFull = filters.from === DEFAULT_FILTERS.from && filters.to === DEFAULT_FILTERS.to;
 
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-body-sm">
       <input
         type="date"
         value={filters.from}

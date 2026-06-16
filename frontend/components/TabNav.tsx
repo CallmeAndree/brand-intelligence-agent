@@ -4,13 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Thứ tự tab: Monitor → Chat → Dashboard. Tab mặc định (trang gốc "/") điều hướng sang
+// /monitor; Dashboard chuyển sang /dashboard.
 const TABS = [
-  {
-    href: "/",
-    label: "Dashboard",
-    activeClass: "bg-[#1a3a3a] text-white shadow-sm shadow-ink/10",
-    inactiveClass: "bg-[#dff5ef] text-[#1a3a3a] hover:bg-[#c8eee5]",
-  },
   {
     href: "/monitor",
     label: "Monitor",
@@ -23,10 +19,17 @@ const TABS = [
     activeClass: "bg-[#ffb084] text-ink shadow-sm shadow-ink/10",
     inactiveClass: "bg-[#fff0e7] text-[#8a3d17] hover:bg-[#ffe2d1]",
   },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    activeClass: "bg-[#1a3a3a] text-white shadow-sm shadow-ink/10",
+    inactiveClass: "bg-[#dff5ef] text-[#1a3a3a] hover:bg-[#c8eee5]",
+  },
 ];
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
+  // "/" redirect sang /monitor → coi gốc là Monitor active.
+  if (href === "/monitor") return pathname === "/" || pathname === "/monitor" || pathname.startsWith("/monitor/");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -38,19 +41,22 @@ export default function TabNav() {
       <div className="relative mx-auto flex max-w-content items-center justify-center px-4 py-3">
         <Link
           href="/"
-          aria-label="ZaloPay Brand Intelligence"
+          aria-label="Zalopay 505"
           className="absolute left-4 flex items-center gap-2"
         >
           <Image
             src="/logo.png"
-            alt="ZaloPay"
+            alt="Zalopay"
             width={36}
             height={36}
             priority
             className="h-9 w-9 rounded-[10px]"
           />
-          <span className="hidden text-sm font-semibold tracking-tight text-ink sm:inline">
-            Brand Intelligence
+          <span className="hidden flex-col leading-tight sm:flex">
+            <span className="text-title-sm text-ink">Zalopay 505</span>
+            <span className="text-[10px] uppercase tracking-wider text-ink/40">
+              Social Listening
+            </span>
           </span>
         </Link>
         <div className="inline-flex items-center justify-center gap-2 rounded-full bg-white/45 p-1.5 shadow-sm ring-1 ring-ink/5">
@@ -60,7 +66,7 @@ export default function TabNav() {
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`inline-flex min-w-28 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                className={`inline-flex min-w-28 items-center justify-center gap-2 rounded-full px-4 py-2 text-nav transition ${
                   active ? tab.activeClass : tab.inactiveClass
                 }`}
                 aria-current={active ? "page" : undefined}

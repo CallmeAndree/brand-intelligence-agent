@@ -9,8 +9,9 @@ import React, {
 } from "react";
 import type { Filters } from "./types";
 
-const DEFAULT_FROM = process.env.NEXT_PUBLIC_DEFAULT_FROM || "2023-06-01";
-const DEFAULT_TO = process.env.NEXT_PUBLIC_DEFAULT_TO || "2026-06-30";
+// Data chỉ còn trong năm 2026 (đã xóa mẫu ngoài 2026) → filter mặc định gói trọn 2026.
+const DEFAULT_FROM = process.env.NEXT_PUBLIC_DEFAULT_FROM || "2026-01-01";
+const DEFAULT_TO = process.env.NEXT_PUBLIC_DEFAULT_TO || "2026-12-31";
 
 export const DEFAULT_FILTERS: Filters = { from: DEFAULT_FROM, to: DEFAULT_TO };
 

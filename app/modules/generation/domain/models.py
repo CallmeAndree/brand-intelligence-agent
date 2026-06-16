@@ -22,6 +22,10 @@ class ArtifactType(StrEnum):
     RESPONSE_STRATEGY = "response_strategy"
     BRAND_VOICE = "brand_voice"
     SEEDING_COMMENTS = "seeding_comments"
+    # 3 skill sinh nội dung TỪ CHAT (add-chat-tools-memory) — ngữ cảnh tự do.
+    CONTENT = "content"
+    DESIGN_BRIEF = "design_brief"
+    RESPONSE_PLAN = "response_plan"
 
 
 class ArtifactStatus(StrEnum):
@@ -43,7 +47,9 @@ class ModelMeta(BaseModel):
 
 
 class MonitorArtifact(BaseMongoModel):
-    cluster_id: int
+    # cluster_id optional: artifact sinh từ chat (CONTENT/DESIGN_BRIEF/RESPONSE_PLAN)
+    # có thể không gắn cụm nào (ngữ cảnh tự do). Artifact monitor vẫn luôn có cluster_id.
+    cluster_id: int | None = None
     type: ArtifactType
     status: ArtifactStatus = ArtifactStatus.DRAFT
     content_md: str
@@ -51,6 +57,8 @@ class MonitorArtifact(BaseMongoModel):
     model_meta: ModelMeta
     source_mention_ids: list[str] = Field(default_factory=list)
     session_id: str | None = None
+    # Nguồn tạo artifact: "monitor" (mặc định, từ workspace cụm) | "chat" (3 skill chat).
+    created_by: str = "monitor"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)

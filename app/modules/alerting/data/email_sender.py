@@ -32,17 +32,19 @@ class EmailSender(LoggerMixin):
         self._port = settings.smtp_port
 
     @property
-    def configured(self) -> bool:
-        return bool(self._user and self._password and self._to)
+    def smtp_ready(self) -> bool:
+        return bool(self._user and self._password)
 
-    async def send(self, subject: str, body_md: str) -> AlertEmail:
-        if not self.configured:
-            self.logger.info("SMTP chưa cấu hình — bỏ qua gửi email (skipped)")
-            return AlertEmail(to=self._to or None, subject=subject, status=EmailStatus.SKIPPED)
+    async def send(self, subject: str, body_md: str, to: str | None = None) -> AlertEmail:
+        # `to` = email phòng ban (điều phối); thiếu → fallback hộp chung RECEIVE_EMAIL.
+        recipient = (to or self._to or "").strip()
+        if not self.smtp_ready or not recipient:
+            self.logger.info("SMTP/recipient chưa cấu hình — bỏ qua gửi email (skipped)")
+            return AlertEmail(to=recipient or None, subject=subject, status=EmailStatus.SKIPPED)
         try:
-            await asyncio.to_thread(self._send_sync, subject, body_md)
+            await asyncio.to_thread(self._send_sync, subject, body_md, recipient)
             return AlertEmail(
-                to=self._to,
+                to=recipient,
                 subject=subject,
                 status=EmailStatus.SENT,
                 sent_at=datetime.now(timezone.utc),
@@ -50,17 +52,17 @@ class EmailSender(LoggerMixin):
         except Exception as exc:  # noqa: BLE001
             self.log_exception("Gửi email alert thất bại")
             return AlertEmail(
-                to=self._to,
+                to=recipient,
                 subject=subject,
                 status=EmailStatus.FAILED,
                 error=f"{type(exc).__name__}: {exc}"[:500],
             )
 
-    def _send_sync(self, subject: str, body_md: str) -> None:
+    def _send_sync(self, subject: str, body_md: str, recipient: str) -> None:
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = self._user
-        msg["To"] = self._to
+        msg["To"] = recipient
         msg.set_content(body_md)
         if _md_to_html is not None:
             msg.add_alternative(_md_to_html(body_md), subtype="html")

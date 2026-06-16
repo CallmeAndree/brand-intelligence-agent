@@ -27,6 +27,7 @@ class EnrichWorker(LoggerMixin):
         retry_delay: float = 300.0,
         max_attempts: int = 5,
         assign_clusters: AssignClustersFn | None = None,
+        on_enriched: Callable[[], None] | None = None,
     ) -> None:
         self.repo = repo
         self.enrich_one = enrich_one
@@ -34,6 +35,8 @@ class EnrichWorker(LoggerMixin):
         self.retry_delay = retry_delay
         self.max_attempts = max_attempts
         self.assign_clusters = assign_clusters
+        # Báo "vừa enrich xong 1 mention" → debounce scheduler gom batch clustering.
+        self.on_enriched = on_enriched
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.semaphore = asyncio.Semaphore(concurrency)
         # Gán cụm đọc-sửa state cụm dùng chung → serialize bằng lock (1 replica).
@@ -81,6 +84,8 @@ class EnrichWorker(LoggerMixin):
                 await self.repo.mark_enriched(mention_id)
                 self._attempts.pop(mention_id, None)
                 await self._assign_clusters(mention_id, fields, topic_vec)
+                if self.on_enriched is not None:
+                    self.on_enriched()  # signal debounce → batch clustering sau khi đợt yên
             except Exception as exc:
                 await self._handle_failure(mention_id, exc)
             finally:
@@ -136,6 +141,7 @@ class EnrichWorker(LoggerMixin):
         ):
             return JudgmentFields(
                 bi_severity=mention.bi_severity,
+                bi_severity_factors=mention.bi_severity_factors or [],
                 bi_intent=mention.bi_intent,
                 bi_is_actionable=mention.bi_is_actionable,
             )

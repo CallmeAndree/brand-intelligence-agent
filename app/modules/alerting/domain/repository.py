@@ -19,3 +19,8 @@ class AlertRepository(ABC):
         self, limit: int = 50, since: str | None = None
     ) -> list[Alert]:
         raise NotImplementedError
+
+    @abstractmethod
+    async def ack(self, alert_id: str) -> bool:
+        """Đánh dấu alert đã đọc (acknowledged=True). Trả True nếu có cập nhật."""
+        raise NotImplementedError

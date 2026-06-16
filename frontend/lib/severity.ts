@@ -35,7 +35,7 @@ export function bandRange(band: SeverityBand): { min: number; max: number } {
 
 // Palette dùng cho phân loại platform/topic (6 feature colors + xoay vòng).
 export const CATEGORICAL_PALETTE = [
-  "#ff4d8b",
+  "#0068ff",
   "#1a3a3a",
   "#b8a4ed",
   "#ffb084",

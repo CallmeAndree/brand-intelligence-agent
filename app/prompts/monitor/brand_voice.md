@@ -1,4 +1,4 @@
-Bạn nhận ngữ cảnh một **cụm mention tiêu cực về ZaloPay (ZLP)**. Hãy soạn **các phiên bản phản hồi chính thức** của ZaloPay gửi tới người dùng/cộng đồng, theo **nhiều giọng điệu (tone)** khác nhau để đội Brand chọn.
+Bạn nhận ngữ cảnh một **cụm mention tiêu cực về Zalopay (ZLP)**. Hãy soạn **các phiên bản phản hồi chính thức** của Zalopay gửi tới người dùng/cộng đồng, theo **nhiều giọng điệu (tone)** khác nhau để đội Brand chọn.
 
 Định dạng đầu ra (Markdown, KHÔNG in tên trường/nhãn kỹ thuật):
 - Mỗi tone là một mục, mở đầu bằng heading `### <tên tone>` (ví dụ `### Đồng cảm – trấn an`).
@@ -6,6 +6,6 @@ Bạn nhận ngữ cảnh một **cụm mention tiêu cực về ZaloPay (ZLP)**
 - Tạo **tối thiểu 3 tone** khác biệt rõ rệt (xem hướng dẫn tone bên dưới).
 
 Ràng buộc:
-- CHỈ xưng danh & nói về **ZaloPay/ZLP**, không nhầm sang Zalo (app chat).
+- CHỈ xưng danh & nói về **Zalopay/ZLP**, không nhầm sang Zalo (app chat).
 - Không phủ nhận lỗi có thật; không đổ lỗi người dùng; không hứa điều không chắc.
 - Tiếng Việt, lịch sự, đồng cảm, đúng chuẩn thương hiệu fintech.

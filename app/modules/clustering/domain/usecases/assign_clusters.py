@@ -7,10 +7,11 @@ Mongo mỗi mention. Worker bọc `execute()` trong `asyncio.Lock` nên các met
 
 D3 — topic cluster: cosine(topic_vec, centroid) ≥ ngưỡng → nhập cụm + cập nhật
 running-mean centroid/count/last_seen/severity_max; ngược lại tạo cụm mới (LLM nhãn).
-D4 — keyword group: mỗi keyword distinct chưa thấy → embed 1 lần (cache vector),
-gán vào group gần nhất ≥ ngưỡng hoặc tạo group mới (LLM nhãn). Khớp bằng
-**max-linkage** (cosine tới MEMBER gần nhất, không phải centroid): centroid running-mean
-trôi về mean toàn cục khi nhóm lớn (qwen3-embedding-8b baseline cao) → hút keyword bừa.
+D4 — keyword group: lọc bỏ keyword rỗng nghĩa (phủ định/cảm thán thuần) trước;
+mỗi keyword distinct chưa thấy → embed 1 lần (cache vector), gán vào group có cosine
+TRUNG BÌNH (average-linkage) tới mọi member cao nhất & ≥ ngưỡng, hoặc tạo group mới
+(LLM nhãn). Average-linkage thay cho max-linkage: max-linkage gây chaining (gần 1 member
+là nhập) → cụm rác "Không kỳ vọng"; trung bình buộc gần cả nhóm → cụm chặt đúng chủ đề.
 """
 
 from collections.abc import Awaitable, Callable
@@ -24,6 +25,7 @@ from app.modules.clustering.domain.clustering_math import (
     best_match,
     clean_keyword,
     cosine_normalize,
+    is_meaningful_keyword,
     label_cluster,
 )
 from app.modules.clustering.domain.models import Cluster, KeywordGroup
@@ -191,7 +193,8 @@ class AssignClustersUseCase(LoggerMixin):
         keywords: list[str] = []
         for raw in fields.bi_keywords or []:
             kw = clean_keyword(raw)
-            if kw and kw not in keywords:
+            # Bỏ keyword rỗng nghĩa (phủ định/cảm thán thuần) — tránh cụm rác.
+            if kw and kw not in keywords and is_meaningful_keyword(kw):
                 keywords.append(kw)
         if not keywords:
             return set()
@@ -216,13 +219,16 @@ class AssignClustersUseCase(LoggerMixin):
         norm = float(np.linalg.norm(vec)) or 1.0
         vec_norm = vec / norm
 
-        # Max-linkage: chọn nhóm có MEMBER gần nhất (cosine cao nhất), không dùng centroid.
+        # Average-linkage: chọn nhóm có cosine TRUNG BÌNH tới mọi member cao nhất.
+        # Khác max-linkage (np.max) trước đây — max-linkage gây "chaining": một keyword
+        # gần BẤT KỲ member nào cũng nhập nhóm → cụm rác kiểu "Không kỳ vọng" hút lan.
+        # Trung bình buộc keyword phải gần CẢ NHÓM mới nhập → cụm chặt, đúng chủ đề.
         best_index: int | None = None
         best_score = -1.0
         for gi, matrix in enumerate(self._kw_group_vecs):
             if matrix is None or len(matrix) == 0:
                 continue
-            score = float(np.max(matrix @ vec_norm))
+            score = float(np.mean(matrix @ vec_norm))
             if score > best_score:
                 best_score = score
                 best_index = gi

@@ -9,9 +9,10 @@ function includeNonDone(): boolean {
 
 // Parse query params thành Filters. Tham số vắng → không ràng buộc.
 export function parseFilters(sp: URLSearchParams): Filters {
+  // Data chỉ còn trong năm 2026 → mặc định gói trọn 2026 (khớp filters.tsx).
   const from =
-    sp.get("from") || process.env.NEXT_PUBLIC_DEFAULT_FROM || "2023-06-01";
-  const to = sp.get("to") || process.env.NEXT_PUBLIC_DEFAULT_TO || "2026-06-30";
+    sp.get("from") || process.env.NEXT_PUBLIC_DEFAULT_FROM || "2026-01-01";
+  const to = sp.get("to") || process.env.NEXT_PUBLIC_DEFAULT_TO || "2026-12-31";
   const f: Filters = { from, to };
 
   const platform = sp.get("platform");

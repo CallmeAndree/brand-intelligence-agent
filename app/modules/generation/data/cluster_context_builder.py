@@ -16,7 +16,7 @@ class ClusterContextBuilder:
     top_n: int = 12
 
     async def build(self, cluster_id: int) -> ClusterContext | None:
-        cluster = await self.reader.find_one("clusters", {"_id": cluster_id})
+        cluster = await self.reader.find_one("topic_cluster", {"_id": cluster_id})
 
         top_docs = await self.reader.find(
             "mentions",

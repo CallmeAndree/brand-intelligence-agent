@@ -222,11 +222,59 @@ versions:
 health:
 	curl -s -o /dev/null -w "%{http_code}\n" $(ENDPOINT)/health
 
+# ---------- Debug logs / events (chẩn đoán runtime ERROR) ----------
+r1-logs:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh logs $(RID) --limit 60 --order desc
+
+# Lọc marker boot/lỗi (loại bỏ spam /health) — chẩn đoán replica mới fail rollout.
+r1-boot:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh logs $(RID) --limit 300 --order desc | grep '"content"' | grep -ivE 'GET /health' | head -40
+
+r2-boot:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh logs $(RID2) --limit 300 --order desc | grep '"content"' | grep -ivE 'GET /health' | head -40
+
+r2-logs:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh logs $(RID2) --limit 60 --order desc
+
+r1-detail:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh get $(RID)
+
+r2-detail:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh get $(RID2) | jq '{status, statusReason, updatedAt, image: .imageUrl, flavor: .flavorName, min: .minReplicas, max: .maxReplicas, net: .networkMode}'
+
+rt-list:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh list | jq -r '.listData[]? | "\(.status)\t\(.name)\t\(.id)"'
+
+flavors:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh flavors
+
+r1-ep:
+	cd $(ROOT); $(PATHX)
+	bash $(SK)/runtime.sh endpoints list $(RID) | jq '.listData[] | select(.name=="DEFAULT")'
+
+r1-events:
+	cd $(ROOT); $(PATHX)
+	EID=$$(bash $(SK)/runtime.sh endpoints list $(RID) | jq -r '.listData[] | select(.name=="DEFAULT") | .id')
+	bash $(SK)/runtime.sh endpoints events $(RID) $$EID
+
+r2-events:
+	cd $(ROOT); $(PATHX)
+	EID=$$(bash $(SK)/runtime.sh endpoints list $(RID2) | jq -r '.listData[] | select(.name=="DEFAULT") | .id')
+	bash $(SK)/runtime.sh endpoints events $(RID2) $$EID
+
 smoke:
 	WT=$$(grep -E '^WEBHOOK_TOKEN=' $(ENVDEPLOY) | cut -d= -f2-)
 	curl -s -X POST $(ENDPOINT)/ingest/email \
 	  -H "X-Webhook-Token: $$WT" -H "Content-Type: application/json" \
-	  -d '{"_id":"smoke-001","mention":"ZaloPay test smoke","source":"manual"}' \
+	  -d '{"_id":"smoke-001","mention":"Zalopay test smoke","source":"manual"}' \
 	  -w "\nHTTP %{http_code}\n"
 
 # ---------- Front-end (Vercel) ----------
@@ -252,6 +300,12 @@ frontend:
 	set_env DATA_BACKEND_URL "$$URL"
 	set_env DATA_BACKEND_TOKEN "$$TOK"
 	if [ -n "$(ENDPOINT2)" ]; then set_env AGENT_BASE_URL "$(ENDPOINT2)"; else echo "   (bỏ qua AGENT_BASE_URL: ENDPOINT2 trống — chạy 'make r2-endpoint' + điền ENDPOINT2 vào Makefile để chat dùng Runtime 2)"; fi
+	if [ -n "$(ENDPOINT)" ]; then \
+	  set_env RUNTIME1_BASE_URL "$(ENDPOINT)"; \
+	  R1TOK=$$(grep -E '^RUNTIME1_API_TOKEN=' $(ENVDEPLOY) | cut -d= -f2- | tr -d '"'); \
+	  [ -z "$$R1TOK" ] && R1TOK=$$(grep -E '^RUNTIME1_API_TOKEN=' $(CURDIR)/.env | cut -d= -f2- | tr -d '"'); \
+	  set_env RUNTIME1_API_TOKEN "$$R1TOK"; \
+	else echo "   (bỏ qua RUNTIME1_BASE_URL: ENDPOINT trống — generation/alert sẽ 503)"; fi
 	echo "==> deploy prod"
 	$(VERCEL) --prod --yes $$TKF
 	@echo "(AGENT_BASE_URL = endpoint Runtime 2 = $(ENDPOINT2); KHÁC API_KEY/BASE_URL LLM gateway trong .env.deploy)"

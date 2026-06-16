@@ -1,7 +1,8 @@
-"""Routes module alerting — phát alert thủ công cho một cụm + đọc lịch sử.
+"""Routes module alerting — phát alert THỦ CÔNG + đọc/ack lịch sử.
 
-POST /alerts/manual: build context → route phòng ban → brief LLM → gửi email →
-lưu `alerts` (kind="manual"). GET /alerts: lịch sử. Guard X-Runtime1-Token.
+POST /alerts/manual: 1 cụm → route phòng ban → brief LLM → email đúng phòng → lưu.
+POST /alerts/{id}/ack: đánh dấu đã đọc. GET /alerts: lịch sử. Guard X-Runtime1-Token.
+(Không còn auto-alert velocity — mọi cảnh báo do người dùng chủ động phát.)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -29,10 +30,12 @@ async def manual_alert(payload: ManualAlertRequest, request: Request) -> Standar
     department = route_uc.execute(ctx)
     brief_md = await compose_uc.execute(ctx, department)
     subject = f"[ZLP Alert] {department.name} — {ctx.label}"[:200]
-    email = await sender.send(subject, brief_md)
+    # Điều phối: gửi đúng email phòng ban (department.email); thiếu → hộp chung.
+    email = await sender.send(subject, brief_md, to=department.email)
 
     alert = Alert(
         _id=Alert.new_id(),
+        kind="manual",
         cluster_id=ctx.cluster_id,
         department=department.name,
         severity_snapshot=ctx.severity_max,
@@ -42,6 +45,15 @@ async def manual_alert(payload: ManualAlertRequest, request: Request) -> Standar
     )
     await repo.insert(alert)
     return create_success_response(alert)
+
+
+@router.post("/{alert_id}/ack", response_model=StandardResponse[dict])
+async def ack_alert(alert_id: str, request: Request) -> StandardResponse[dict]:
+    repo = request.app.state.alert_repo
+    ok = await repo.ack(alert_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"alert {alert_id} không tồn tại")
+    return create_success_response({"alert_id": alert_id, "acknowledged": True})
 
 
 @router.get("", response_model=StandardResponse[list[Alert]])
